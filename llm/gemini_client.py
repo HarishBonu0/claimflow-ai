@@ -6,7 +6,10 @@ Converts retrieved context into simple, user-friendly answers.
 import os
 import re
 import google.generativeai as genai
+from dotenv import load_dotenv
 
+# Load environment variables from .env file
+load_dotenv()
 
 # Load API key from environment
 API_KEY = os.getenv('GEMINI_API_KEY')
