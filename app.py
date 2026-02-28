@@ -295,36 +295,50 @@ st.markdown("""
         background: #334155;
     }
     
-    /* Professional Mic Button - ChatGPT Style */
+    /* Professional Mic Button - Inside Input ChatGPT Style */
+    [data-testid="stChatInputContainer"] {
+        position: relative;
+    }
+    
+    /* Unified Input with Mic Button */
+    .input-wrapper {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .input-wrapper > div:first-child {
+        flex: 1;
+    }
+    
     button[key="voice_record_btn"] {
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        width: 40px !important;
-        height: 40px !important;
+        width: 38px !important;
+        height: 38px !important;
         padding: 0 !important;
         border-radius: 50% !important;
         background: transparent !important;
-        border: 1px solid #475569 !important;
-        color: #94a3b8 !important;
-        font-size: 1.3rem !important;
+        border: none !important;
+        color: #64748b !important;
+        font-size: 1.2rem !important;
         cursor: pointer !important;
-        transition: all 0.3s ease !important;
+        transition: all 0.2s ease !important;
         flex-shrink: 0 !important;
+        position: relative !important;
     }
     
     button[key="voice_record_btn"]:hover {
-        background: #1e293b !important;
-        border-color: #3b82f6 !important;
         color: #3b82f6 !important;
-        box-shadow: 0 0 12px rgba(59, 130, 246, 0.3) !important;
+        background: rgba(59, 130, 246, 0.05) !important;
     }
     
     button[key="voice_record_btn"]:active {
-        background: #3b82f6 !important;
-        border-color: #3b82f6 !important;
-        color: white !important;
-        scale: 0.95 !important;
+        background: rgba(59, 130, 246, 0.15) !important;
+        color: #3b82f6 !important;
+        transform: scale(0.95) !important;
     }
     
     /* Voice generation & other buttons */
@@ -689,16 +703,15 @@ st.markdown("</div>", unsafe_allow_html=True)
 input_container = st.container()
 
 with input_container:
-    col1, col2 = st.columns([0.5, 4.5])
+    col1, col2 = st.columns([1, 0.08], gap="small")
     
     with col1:
-        # Small voice recording button before input
-        if VOICE_ENABLED:
-            if st.button("🎤", help="Record voice", key="voice_record_btn", use_container_width=True):
-                st.session_state.show_voice_recorder = True
+        prompt = st.chat_input("Ask about insurance claims or savings growth...")
     
     with col2:
-        prompt = st.chat_input("Ask about insurance claims or savings growth...")
+        if VOICE_ENABLED:
+            if st.button("🎙️", help="Record voice", key="voice_record_btn", use_container_width=False):
+                st.session_state.show_voice_recorder = True
 
 # Voice recorder section (hidden by default)
 if VOICE_ENABLED and st.session_state.get("show_voice_recorder", False):
