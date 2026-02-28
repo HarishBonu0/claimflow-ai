@@ -1,14 +1,22 @@
-# Gemini Flash Integration Setup Guide
+# Gemma AI Integration Setup Guide
 
 ## Overview
-This document explains how to set up and use the Gemini Flash integration with the RAG system.
+This document explains how to set up and use the Gemma AI integration with the RAG system.
 
 ## What is Included
 
-- `llm/gemini_client.py` - Gemini Flash API integration
-- `llm/integration_example.py` - Complete RAG + Gemini example
+- `llm/gemini_client.py` - Gemma AI API integration (lightweight, fast model)
+- `llm/integration_example.py` - Complete RAG + Gemma example
 - Function: `retrieve_context(query)` - RAG retrieval (from rag/retriever.py)
-- Function: `generate_response(query, context)` - Gemini generation
+- Function: `generate_response(query, context)` - Gemma generation
+
+## Model Information
+
+**Current Model**: Gemma 3.1B (Google's lightweight language model)
+- Fast response time (~2 seconds per question)
+- Optimized for simple, clear explanations
+- Available on Google AI Studio free tier
+- Ideal for insurance claim explanations
 
 ## Step 1: Get a Gemini API Key
 
