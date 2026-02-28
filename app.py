@@ -295,8 +295,39 @@ st.markdown("""
         background: #334155;
     }
     
-    /* Voice buttons styling */
-    button[key="voice_record_btn"],
+    /* Professional Mic Button - ChatGPT Style */
+    button[key="voice_record_btn"] {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 40px !important;
+        height: 40px !important;
+        padding: 0 !important;
+        border-radius: 50% !important;
+        background: transparent !important;
+        border: 1px solid #475569 !important;
+        color: #94a3b8 !important;
+        font-size: 1.3rem !important;
+        cursor: pointer !important;
+        transition: all 0.3s ease !important;
+        flex-shrink: 0 !important;
+    }
+    
+    button[key="voice_record_btn"]:hover {
+        background: #1e293b !important;
+        border-color: #3b82f6 !important;
+        color: #3b82f6 !important;
+        box-shadow: 0 0 12px rgba(59, 130, 246, 0.3) !important;
+    }
+    
+    button[key="voice_record_btn"]:active {
+        background: #3b82f6 !important;
+        border-color: #3b82f6 !important;
+        color: white !important;
+        scale: 0.95 !important;
+    }
+    
+    /* Voice generation & other buttons */
     button[key="gen_voice_btn"],
     button[key="process_voice"],
     button[key="gen_voice_go"] {
