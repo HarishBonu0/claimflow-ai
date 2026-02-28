@@ -1,4 +1,7 @@
-"""
+from rag.retriever import retrieve_context
+
+context = retrieve_context("why insurance claims take time", k=3)
+print(context)"""
 Build vector database from knowledge base documents.
 Loads .txt files, chunks them, generates embeddings, and stores in ChromaDB.
 """
