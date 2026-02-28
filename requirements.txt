@@ -1,2 +1,5 @@
-google-genai
-python-dotenv# Python dependencies
+# Python dependencies
+sentence-transformers
+chromadb
+streamlit
+google-generativeai
