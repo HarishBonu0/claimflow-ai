@@ -7,6 +7,10 @@ import streamlit as st
 import time
 from datetime import datetime
 
+# Import RAG + Gemini system
+from rag.retriever import retrieve_context
+from llm.gemini_client import generate_response as gemini_generate_response
+
 # ============================================
 # PAGE CONFIGURATION
 # ============================================
@@ -270,131 +274,29 @@ if "current_chat_id" not in st.session_state:
 # ============================================
 
 def generate_response(user_input):
-    """Generate AI response based on user input"""
-    time.sleep(0.8)  # Simulate processing
+    """Generate AI response using RAG + Gemini system"""
+    try:
+        # Retrieve context from RAG
+        context = retrieve_context(user_input)
+        
+        # Generate response using Gemini
+        response = gemini_generate_response(user_input, context)
+        
+        return response
     
-    # Check for guardrails
-    guardrail_triggers = ["will my claim be approved", "which insurance should i buy", "guarantee", "recommend insurance"]
-    if any(trigger in user_input.lower() for trigger in guardrail_triggers):
-        return """
-⚠️ **Important Notice**
+    except Exception as e:
+        # Fallback error message
+        return f"""
+⚠️ **Service Temporarily Unavailable**
 
-I can explain insurance processes and concepts, but I cannot:
-- Predict claim approval outcomes
-- Recommend specific insurance products
-- Make financial decisions for you
+I encountered an error processing your question. This could be due to:
+- API rate limits
+- Network connectivity issues
+- Service maintenance
 
-I'm here to help you **understand** insurance and savings concepts so you can make informed decisions. 
+**Error details**: {str(e)[:100]}
 
-Would you like me to explain how claim evaluation works instead?
-"""
-    
-    # Insurance claims questions
-    if any(word in user_input.lower() for word in ["claim", "process", "stages", "steps"]):
-        return """
-**Insurance Claims Process**
-
-Here's how insurance claims typically work:
-
-1. **Claim Filing** - Submit your claim with necessary documents within the specified timeframe
-2. **Acknowledgment** - Insurer acknowledges receipt (usually within 24-48 hours)
-3. **Document Verification** - Claims team reviews submitted documents
-4. **Investigation** - If needed, surveyor assesses the claim
-5. **Decision** - Claim is approved, rejected, or more info is requested
-6. **Settlement** - Approved amount is disbursed
-
-**Timeline**: Most claims are processed within 15-30 days.
-
-**Tip**: Keep all original documents and maintain clear communication with your insurer.
-"""
-    
-    # Delay questions
-    if "delay" in user_input.lower():
-        return """
-**Common Reasons for Claim Delays**
-
-Your claim might be delayed due to:
-
-- **Missing Documents** - Incomplete paperwork is the #1 cause
-- **Verification Pending** - Additional information needed
-- **Complex Cases** - High-value or unusual claims take longer
-- **Peak Periods** - During disasters, processing slows down
-- **Discrepancies** - Conflicting information in documents
-
-**What You Can Do:**
-- Follow up regularly
-- Provide complete documentation upfront
-- Respond quickly to insurer requests
-- Keep records of all communication
-"""
-    
-    # Documents
-    if "document" in user_input.lower():
-        return """
-**Required Documents for Claims**
-
-**Health Insurance:**
-- Hospital bills and receipts
-- Discharge summary
-- Diagnostic reports
-- Prescription and pharmacy bills
-- Doctor's certificate
-
-**Motor Insurance:**
-- FIR copy (for theft/accident)
-- Driving license
-- RC book copy
-- Repair estimates
-- Photos of damage
-
-**Life Insurance:**
-- Death certificate
-- Claim form
-- Policy document
-- ID proof of beneficiary
-
-**Pro Tip**: Keep digital copies of all documents for faster processing.
-"""
-    
-    # Savings questions
-    if any(word in user_input.lower() for word in ["savings", "growth", "compound", "investment", "sip"]):
-        return """
-**Savings Growth Through Compounding**
-
-Compound interest is earning interest on your interest. Here's how it works:
-
-**Example:**
-- Initial Amount: ₹10,000
-- Annual Return: 8%
-- After 10 years: ₹21,589
-- After 20 years: ₹46,610
-- After 30 years: ₹1,00,627
-
-**Key Principles:**
-1. **Start Early** - Time is your biggest advantage
-2. **Stay Consistent** - Regular investments (SIP) work best
-3. **Be Patient** - Compounding accelerates over time
-4. **Diversify** - Spread risk across different options
-
-**Popular Options:**
-- Fixed Deposits (Safe, 5-7% returns)
-- Mutual Funds (Moderate risk, 10-12% potential)
-- PPF (Tax-free, 7-8% returns)
-- Stocks (High risk, variable returns)
-
-💡 **Remember**: Past performance doesn't guarantee future results. Always assess your risk tolerance.
-"""
-    
-    # Default response
-    return """
-I'm ClaimFlow AI, your insurance and savings guide. I can help you with:
-
-- **Insurance Claims** - Understanding the process, timelines, and requirements
-- **Savings Growth** - Learning about compound interest and investment principles
-- **Documents** - Knowing what paperwork you need
-- **Common Issues** - Delays, rejections, and how to handle them
-
-What would you like to know more about?
+Please try again in a moment, or rephrase your question.
 """
 
 # ============================================
