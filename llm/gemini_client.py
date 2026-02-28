@@ -74,12 +74,11 @@ Be friendly and use short sentences."""
         
         # Create model instance
         model = genai.GenerativeModel(
-            model_name='gemini-2.0-flash',
+            model_name='gemma-3-1b-it',
             generation_config=genai.types.GenerationConfig(
                 temperature=temperature,
                 max_output_tokens=max_tokens,
-            ),
-            system_instruction=SYSTEM_PROMPT
+            )
         )
         
         # Generate response
