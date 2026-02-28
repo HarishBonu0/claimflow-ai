@@ -1,0 +1,573 @@
+/* ============================================
+   ClaimFlow AI - Professional Fintech Theme
+   ChatGPT-Inspired Dark Mode Design
+   ============================================ */
+
+/* Import Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ============================================
+   GLOBAL STYLES
+   ============================================ */
+
+* {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    box-sizing: border-box;
+}
+
+html, body, [data-testid="stAppViewContainer"] {
+    background: #0F172A !important;
+    color: #E2E8F0 !important;
+    scroll-behavior: smooth;
+}
+
+/* Hide Streamlit branding */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
+
+/* Remove default padding */
+.block-container {
+    padding: 0 !important;
+    max-width: 100% !important;
+}
+
+/* ============================================
+   TOP NAVIGATION BAR
+   ============================================ */
+
+.top-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
+    border-bottom: 1px solid #334155;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.top-bar-content {
+    max-width: 1400px;
+    margin: 0 auto;
+    height: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 2rem;
+}
+
+.app-branding {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.app-icon {
+    font-size: 1.8rem;
+    filter: drop-shadow(0 2px 4px rgba(59, 130, 246, 0.4));
+}
+
+.app-name {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #F8FAFC;
+    letter-spacing: -0.5px;
+}
+
+.app-tagline {
+    font-size: 0.85rem;
+    color: #94A3B8;
+    font-weight: 400;
+    margin-left: 0.5rem;
+    padding-left: 0.75rem;
+    border-left: 2px solid #334155;
+}
+
+.trust-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 20px;
+    padding: 0.5rem 1rem;
+    font-size: 0.8rem;
+    color: #93C5FD;
+    font-weight: 500;
+}
+
+.badge-icon {
+    font-size: 1rem;
+}
+
+/* ============================================
+   SIDEBAR STYLING (ChatGPT Style)
+   ============================================ */
+
+[data-testid="stSidebar"] {
+    background: #1E293B !important;
+    border-right: 1px solid #334155;
+    padding-top: 60px !important;
+}
+
+[data-testid="stSidebar"] > div:first-child {
+    background: #1E293B !important;
+    padding: 1.5rem 1rem;
+}
+
+/* Sidebar buttons */
+[data-testid="stSidebar"] .stButton > button {
+    background: transparent !important;
+    color: #E2E8F0 !important;
+    border: 1px solid #334155 !important;
+    border-radius: 8px !important;
+    padding: 0.75rem 1rem !important;
+    font-weight: 500 !important;
+    font-size: 0.9rem !important;
+    transition: all 0.3s ease !important;
+    width: 100% !important;
+    text-align: left !important;
+}
+
+[data-testid="stSidebar"] .stButton > button:hover {
+    background: #334155 !important;
+    border-color: #3B82F6 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+}
+
+/* Primary button (New Chat) */
+[data-testid="stSidebar"] button[kind="primary"],
+[data-testid="stSidebar"] button[key="new_chat_sidebar"] {
+    background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%) !important;
+    color: white !important;
+    border: none !important;
+    font-weight: 600 !important;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+[data-testid="stSidebar"] button[kind="primary"]:hover,
+[data-testid="stSidebar"] button[key="new_chat_sidebar"]:hover {
+    background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%) !important;
+    box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4) !important;
+}
+
+/* Sidebar section titles */
+.sidebar-section-title {
+    color: #94A3B8;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin: 1.5rem 0 0.75rem 0;
+    padding: 0 0.5rem;
+}
+
+.sidebar-divider {
+    height: 1px;
+    background: #334155;
+    margin: 1.5rem 0;
+}
+
+/* Empty history state */
+.empty-history {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: #64748B;
+    font-size: 0.85rem;
+    line-height: 1.6;
+}
+
+.empty-history p {
+    margin: 0.5rem 0;
+}
+
+/* Sidebar footer */
+.sidebar-footer {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #334155;
+    text-align: center;
+    color: #64748B;
+    font-size: 0.75rem;
+}
+
+.version-info {
+    margin-bottom: 0.5rem;
+    color: #94A3B8;
+}
+
+.powered-by {
+    color: #64748B;
+}
+
+/* ============================================
+   MAIN CHAT AREA
+   ============================================ */
+
+.main {
+    background: #0F172A !important;
+    padding-top: 60px !important;
+    min-height: 100vh;
+}
+
+/* Chat container */
+.chat-container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 8rem 1.5rem;
+}
+
+/* ============================================
+   HERO SECTION (Welcome Screen)
+   ============================================ */
+
+.hero-section {
+    text-align: center;
+    padding: 6rem 2rem 3rem 2rem;
+    animation: fadeIn 0.6s ease-in;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.hero-icon {
+    font-size: 5rem;
+    margin-bottom: 1.5rem;
+    filter: drop-shadow(0 4px 12px rgba(59, 130, 246, 0.5));
+    animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+.hero-title {
+    font-size: 3rem;
+    font-weight: 700;
+    color: #F8FAFC;
+    margin-bottom: 1rem;
+    letter-spacing: -1px;
+    background: linear-gradient(135deg, #F8FAFC 0%, #94A3B8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.hero-subtitle {
+    font-size: 1.2rem;
+    color: #94A3B8;
+    font-weight: 400;
+    margin-bottom: 3rem;
+    line-height: 1.6;
+}
+
+/* Suggestions container */
+.suggestions-container {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 2rem 0;
+}
+
+.suggestions-title {
+    text-align: center;
+    color: #64748B;
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin-bottom: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Suggestion buttons */
+.suggestions-container .stButton > button {
+    background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%) !important;
+    color: #E2E8F0 !important;
+    border: 1px solid #334155 !important;
+    border-radius: 12px !important;
+    padding: 1rem 1.5rem !important;
+    font-weight: 500 !important;
+    font-size: 0.95rem !important;
+    transition: all 0.3s ease !important;
+    width: 100% !important;
+    text-align: left !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.suggestions-container .stButton > button:hover {
+    background: linear-gradient(135deg, #334155 0%, #1E293B 100%) !important;
+    border-color: #3B82F6 !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3) !important;
+    color: #FFFFFF !important;
+}
+
+/* ============================================
+   CHAT MESSAGES (ChatGPT Style)
+   ============================================ */
+
+.stChatMessage {
+    background: transparent !important;
+    border: none !important;
+    padding: 1.5rem 0 !important;
+    margin: 0 !important;
+}
+
+/* Chat message content */
+[data-testid="stChatMessageContent"] {
+    background: #1E293B !important;
+    border: 1px solid #334155 !important;
+    border-radius: 12px !important;
+    padding: 1.25rem 1.5rem !important;
+    color: #E2E8F0 !important;
+    font-size: 0.95rem !important;
+    line-height: 1.7 !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* User messages - Right aligned with different color */
+[data-testid="stChatMessage"][data-testid*="user"] [data-testid="stChatMessageContent"] {
+    background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%) !important;
+    border: 1px solid #60A5FA !important;
+    color: #FFFFFF !important;
+    margin-left: auto;
+}
+
+/* Text styling inside messages */
+[data-testid="stChatMessageContent"] p {
+    color: inherit !important;
+    margin: 0.75rem 0 !important;
+}
+
+[data-testid="stChatMessageContent"] p:first-child {
+    margin-top: 0 !important;
+}
+
+[data-testid="stChatMessageContent"] p:last-child {
+    margin-bottom: 0 !important;
+}
+
+[data-testid="stChatMessageContent"] strong {
+    color: #F8FAFC !important;
+    font-weight: 600 !important;
+}
+
+[data-testid="stChatMessageContent"] ul,
+[data-testid="stChatMessageContent"] ol {
+    margin: 0.75rem 0 !important;
+    padding-left: 1.5rem !important;
+}
+
+[data-testid="stChatMessageContent"] li {
+    margin: 0.5rem 0 !important;
+    color: inherit !important;
+}
+
+/* Code blocks */
+[data-testid="stChatMessageContent"] code {
+    background: #0F172A !important;
+    border: 1px solid #334155 !important;
+    border-radius: 4px !important;
+    padding: 0.2rem 0.4rem !important;
+    font-family: 'Monaco', 'Menlo', monospace !important;
+    font-size: 0.85rem !important;
+    color: #93C5FD !important;
+}
+
+/* ============================================
+   CHAT INPUT (Bottom-Fixed)
+   ============================================ */
+
+.stChatInputContainer {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    background: linear-gradient(180deg, transparent 0%, #0F172A 20%) !important;
+    backdrop-filter: blur(10px) !important;
+    border-top: 1px solid #334155 !important;
+    padding: 1.5rem 2rem !important;
+    z-index: 999 !important;
+}
+
+/* Adjust for sidebar */
+[data-testid="stSidebar"] ~ div .stChatInputContainer {
+    left: 336px !important;
+}
+
+/* When sidebar is collapsed */
+[data-testid="stSidebar"][aria-expanded="false"] ~ div .stChatInputContainer {
+    left: 0 !important;
+}
+
+.stChatInputContainer > div {
+    max-width: 900px !important;
+    margin: 0 auto !important;
+}
+
+.stChatInput > div {
+    background: #1E293B !important;
+    border: 2px solid #334155 !important;
+    border-radius: 24px !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+    transition: all 0.3s ease !important;
+}
+
+.stChatInput > div:focus-within {
+    border-color: #3B82F6 !important;
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2), 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+}
+
+.stChatInput input {
+    color: #E2E8F0 !important;
+    font-size: 0.95rem !important;
+    padding: 0.75rem 1.5rem !important;
+    background: transparent !important;
+}
+
+.stChatInput input::placeholder {
+    color: #64748B !important;
+}
+
+/* ============================================
+   GUARDRAIL WARNING CARD
+   ============================================ */
+
+.guardrail-card {
+    background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
+    border: 2px solid #F59E0B;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin: 1.5rem 0;
+    display: flex;
+    gap: 1rem;
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+    animation: slideIn 0.4s ease-out;
+}
+
+.guardrail-icon {
+    font-size: 2rem;
+    flex-shrink: 0;
+}
+
+.guardrail-content h4 {
+    color: #78350F;
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 0 0 0.75rem 0;
+}
+
+.guardrail-content p {
+    color: #92400E;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin: 0;
+}
+
+/* ============================================
+   PLOTLY CHART STYLING
+   ============================================ */
+
+.js-plotly-plot {
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    margin: 1.5rem 0;
+}
+
+/* ============================================
+   DATAFRAME STYLING
+   ============================================ */
+
+[data-testid="stDataFrame"] {
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* ============================================
+   RESPONSIVE DESIGN
+   ============================================ */
+
+@media (max-width: 768px) {
+    .top-bar-content {
+        padding: 0 1rem;
+    }
+    
+    .app-tagline {
+        display: none;
+    }
+    
+    .hero-title {
+        font-size: 2rem;
+    }
+    
+    .hero-subtitle {
+        font-size: 1rem;
+    }
+    
+    .chat-container {
+        padding: 1.5rem 1rem 8rem 1rem;
+    }
+    
+    [data-testid="stSidebar"] ~ div .stChatInputContainer {
+        left: 0 !important;
+    }
+}
+
+/* ============================================
+   ACCESSIBILITY
+   ============================================ */
+
+/* Focus indicators */
+button:focus,
+input:focus {
+    outline: 2px solid #3B82F6 !important;
+    outline-offset: 2px !important;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .top-bar {
+        border-bottom-width: 2px;
+    }
+    
+    [data-testid="stChatMessageContent"] {
+        border-width: 2px !important;
+    }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation: none !important;
+        transition: none !important;
+    }
+}

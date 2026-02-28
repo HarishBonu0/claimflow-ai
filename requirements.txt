@@ -1,1 +1,18 @@
-# Python dependencies
+# ClaimFlow AI - Requirements
+
+# Core Framework
+streamlit>=1.30.0
+
+# Data Visualization
+plotly>=5.18.0
+pandas>=2.1.0
+
+# Optional: For future AI integration
+# google-generativeai
+# openai
+# langchain
+
+# Development
+# pytest
+# black
+# flake8
