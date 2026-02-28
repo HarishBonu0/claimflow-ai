@@ -74,7 +74,7 @@ Be friendly and use short sentences."""
         
         # Create model instance
         model = genai.GenerativeModel(
-            model_name='gemini-1.5-flash',
+            model_name='gemini-2.0-flash',
             generation_config=genai.types.GenerationConfig(
                 temperature=temperature,
                 max_output_tokens=max_tokens,
@@ -96,12 +96,14 @@ Be friendly and use short sentences."""
     except Exception as e:
         # Handle API errors gracefully
         error_msg = str(e)
-        if "API key" in error_msg:
+        if "API key" in error_msg or "Invalid API" in error_msg:
             return "API configuration error. Please check your API key."
-        elif "rate limit" in error_msg.lower():
+        elif "quota" in error_msg.lower() or "exceeded" in error_msg.lower():
+            return "API quota exceeded. Please check your billing settings or enable billing in your Google account."
+        elif "rate limit" in error_msg.lower() or "429" in error_msg:
             return "Service temporarily busy. Please try again in a moment."
         else:
-            return f"I encountered an error while processing your question. Please try again."
+            return f"Service error: {error_msg[:100]}" if len(error_msg) > 0 else "I encountered an error while processing your question. Please try again."
 
 
 def simple_answer(query, context):
