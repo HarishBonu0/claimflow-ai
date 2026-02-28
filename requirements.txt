@@ -1,4 +1,4 @@
 # Python dependencies
-sentence-transformers==2.2.2
-chromadb==0.4.18
-streamlit==1.28.0
+sentence-transformers
+chromadb
+streamlit
