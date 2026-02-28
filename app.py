@@ -5,11 +5,20 @@ Minimal ChatGPT-Style Interface
 
 import streamlit as st
 import time
+import logging
 from datetime import datetime
 
-# Import RAG + Gemini system
-from rag.retriever import retrieve_context
-from llm.gemini_client import generate_response as gemini_generate_response
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Import integration layer and safety modules
+from llm.integration_example import answer_query
+from llm.safety_filter import check_safety
+from llm.intent_classifier import IntentClassifier
 
 # ============================================
 # PAGE CONFIGURATION
@@ -274,18 +283,29 @@ if "current_chat_id" not in st.session_state:
 # ============================================
 
 def generate_response(user_input):
-    """Generate AI response using RAG + Gemini system"""
+    """Generate AI response with safety checks and intent classification"""
     try:
-        # Retrieve context from RAG
-        context = retrieve_context(user_input)
+        logger.info(f"Processing query: {user_input[:50]}...")
         
-        # Generate response using Gemini
-        response = gemini_generate_response(user_input, context)
+        # Step 1: Intent classification
+        intent, confidence = IntentClassifier.classify(user_input)
+        logger.info(f"Intent: {intent} (confidence: {confidence:.2f})")
+        
+        # Step 2: Safety check (pre-LLM guardrails)
+        is_safe, rejection_message = check_safety(user_input)
+        if not is_safe:
+            logger.warning(f"Query blocked by safety filter: {intent}")
+            return rejection_message
+        
+        # Step 3: Use proper integration layer (RAG + LLM)
+        response = answer_query(user_input, context_k=3, verbose=False)
+        logger.info(f"Response generated: {len(response)} characters")
         
         return response
     
     except Exception as e:
         # Fallback error message
+        logger.error(f"Error processing query: {str(e)}", exc_info=True)
         return f"""
 ⚠️ **Service Temporarily Unavailable**
 
