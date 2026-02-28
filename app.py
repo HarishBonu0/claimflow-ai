@@ -69,13 +69,13 @@ st.markdown("""
         font-family: 'Inter', sans-serif;
     }
     
-    /* Dark Background */
+    /* Warm Cream Background */
     .stApp {
-        background: #0f172a;
+        background: #FAF9F7;
     }
     
     .main {
-        background: #0f172a;
+        background: #FAF9F7;
     }
     
     /* Hide Streamlit Branding */
@@ -89,49 +89,49 @@ st.markdown("""
         max-width: 100% !important;
     }
     
-    /* Top Bar */
+    /* Top Bar - Deep Emerald */
     .top-bar {
-        background: #1e293b;
+        background: #047857;
         padding: 0.75rem 1.5rem;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        border-bottom: 1px solid #334155;
+        border-bottom: 1px solid #047857;
         position: sticky;
         top: 0;
         z-index: 1000;
     }
     
     .app-title {
-        color: #f1f5f9;
+        color: #FFFFFF;
         font-size: 0.95rem;
         font-weight: 600;
     }
     
     .trust-badge {
-        background: rgba(59, 130, 246, 0.1);
-        color: #60a5fa;
+        background: rgba(217, 119, 6, 0.1);
+        color: #D97706;
         padding: 0.25rem 0.75rem;
         border-radius: 6px;
         font-size: 0.75rem;
-        border: 1px solid rgba(59, 130, 246, 0.2);
+        border: 1px solid rgba(217, 119, 6, 0.3);
     }
     
     /* Sidebar Styling */
     [data-testid="stSidebar"] {
-        background: #1e293b;
-        border-right: 1px solid #334155;
+        background: #FFFFFF;
+        border-right: 1px solid #E5E7EB;
     }
     
     [data-testid="stSidebar"] > div:first-child {
-        background: #1e293b;
+        background: #FFFFFF;
     }
     
     /* Sidebar Buttons */
     [data-testid="stSidebar"] .stButton > button {
         background: transparent;
-        color: #e2e8f0;
-        border: 1px solid #475569;
+        color: #047857;
+        border: 1px solid #047857;
         border-radius: 6px;
         padding: 0.6rem 1rem;
         font-size: 0.875rem;
@@ -140,19 +140,19 @@ st.markdown("""
     }
     
     [data-testid="stSidebar"] .stButton > button:hover {
-        background: #334155;
-        border-color: #64748b;
+        background: #D1FAE5;
+        border-color: #047857;
     }
     
     /* New Chat Button */
     .stButton > button[key="new_chat"] {
-        background: #3b82f6 !important;
+        background: #047857 !important;
         color: white !important;
         border: none !important;
     }
     
     .stButton > button[key="new_chat"]:hover {
-        background: #2563eb !important;
+        background: #065F46 !important;
     }
     
     /* Chat Container - Narrow & Centered */
@@ -170,19 +170,19 @@ st.markdown("""
     
     /* Assistant Messages */
     [data-testid="stChatMessageContent"] {
-        background: #1e293b;
-        border: 1px solid #334155;
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
         border-radius: 12px;
         padding: 1rem 1.25rem;
-        color: #e2e8f0;
+        color: #1F2937;
         font-size: 0.9rem;
         line-height: 1.6;
     }
     
     /* User Messages */
     [data-testid="stChatMessage"][data-testid*="user"] [data-testid="stChatMessageContent"] {
-        background: #3b82f6;
-        color: white;
+        background: #D1FAE5;
+        color: #1F2937;
         border: none;
     }
     
@@ -192,8 +192,8 @@ st.markdown("""
         bottom: 0;
         left: 21rem;
         right: 0;
-        background: #0f172a;
-        border-top: 1px solid #334155;
+        background: #FAF9F7;
+        border-top: 1px solid #E5E7EB;
         padding: 1rem;
         z-index: 999;
     }
@@ -204,29 +204,29 @@ st.markdown("""
     }
     
     .stChatInput > div {
-        background: #1e293b;
-        border: 1px solid #475569;
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
         border-radius: 12px;
     }
     
     .stChatInput input {
-        color: #e2e8f0;
+        color: #1F2937;
         font-size: 0.9rem;
     }
     
     .stChatInput input::placeholder {
-        color: #64748b;
+        color: #6B7280;
     }
     
     /* Empty State */
     .empty-state {
         text-align: center;
         padding: 4rem 2rem;
-        color: #94a3b8;
+        color: #6B7280;
     }
     
     .empty-state h2 {
-        color: #f1f5f9;
+        color: #1F2937;
         font-size: 1.5rem;
         font-weight: 600;
         margin-bottom: 0.5rem;
@@ -239,9 +239,9 @@ st.markdown("""
     
     /* Suggestion Buttons */
     .suggestion-btn {
-        background: #1e293b;
-        border: 1px solid #475569;
-        color: #e2e8f0;
+        background: #D1FAE5;
+        border: 1px solid #047857;
+        color: #1F2937;
         padding: 0.75rem 1rem;
         border-radius: 8px;
         margin: 0.5rem;
@@ -252,24 +252,25 @@ st.markdown("""
     }
     
     .suggestion-btn:hover {
-        background: #334155;
-        border-color: #3b82f6;
+        background: #047857;
+        color: #FFFFFF;
+        border-color: #047857;
     }
     
     /* Warning Card */
     .warning-card {
-        background: rgba(251, 191, 36, 0.1);
-        border: 1px solid rgba(251, 191, 36, 0.3);
+        background: rgba(245, 158, 11, 0.1);
+        border: 1px solid rgba(245, 158, 11, 0.3);
         border-radius: 8px;
         padding: 1rem;
         margin: 1rem 0;
-        color: #fbbf24;
+        color: #F59E0B;
         font-size: 0.85rem;
     }
     
     /* Sidebar Text */
     [data-testid="stSidebar"] p, [data-testid="stSidebar"] span {
-        color: #94a3b8;
+        color: #1F2937;
         font-size: 0.85rem;
     }
     
@@ -281,18 +282,18 @@ st.markdown("""
     
     /* Chat input container */
     .stChatInput button[data-testid="baseButton-secondary"] {
-        color: #e2e8f0;
-        border: 1px solid #475569;
+        color: #1F2937;
+        border: 1px solid #E5E7EB;
     }
     
     /* Voice & Generate buttons */
     [data-testid="baseButton-secondary"] button {
-        background: #1e293b;
-        border: 1px solid #475569;
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
     }
     
     [data-testid="baseButton-secondary"] button:hover {
-        background: #334155;
+        background: #D1FAE5;
     }
     
     /* Professional Mic Button - Inside Input ChatGPT Style */
@@ -322,7 +323,7 @@ st.markdown("""
         border-radius: 50% !important;
         background: transparent !important;
         border: none !important;
-        color: #64748b !important;
+        color: #047857 !important;
         font-size: 1.2rem !important;
         cursor: pointer !important;
         transition: all 0.2s ease !important;
@@ -331,13 +332,13 @@ st.markdown("""
     }
     
     button[key="voice_record_btn"]:hover {
-        color: #3b82f6 !important;
-        background: rgba(59, 130, 246, 0.05) !important;
+        color: #065F46 !important;
+        background: rgba(4, 120, 87, 0.05) !important;
     }
     
     button[key="voice_record_btn"]:active {
-        background: rgba(59, 130, 246, 0.15) !important;
-        color: #3b82f6 !important;
+        background: rgba(4, 120, 87, 0.15) !important;
+        color: #065F46 !important;
         transform: scale(0.95) !important;
     }
     
@@ -359,15 +360,16 @@ st.markdown("""
     
     /* Tabs styling */
     .stTabs [data-baseweb="tab-list"] button {
-        background: #1e293b;
-        border: 1px solid #334155;
-        color: #e2e8f0;
+        background: #FAF9F7;
+        border: 1px solid #E5E7EB;
+        color: #1F2937;
         font-size: 0.85rem;
     }
     
     .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-        background: #3b82f6;
-        border: 1px solid #3b82f6;
+        background: #047857;
+        border: 1px solid #047857;
+        color: #FFFFFF;
     }
     
     /* Scrollbar */
@@ -376,16 +378,16 @@ st.markdown("""
     }
     
     ::-webkit-scrollbar-track {
-        background: #1e293b;
+        background: #FAF9F7;
     }
     
     ::-webkit-scrollbar-thumb {
-        background: #475569;
+        background: #D1D5DB;
         border-radius: 4px;
     }
     
     ::-webkit-scrollbar-thumb:hover {
-        background: #64748b;
+        background: #047857;
     }
 
 </style>
