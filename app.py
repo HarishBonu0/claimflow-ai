@@ -467,43 +467,38 @@ with st.sidebar:
     # VOICE INPUT SECTION
     # ============================================
     if VOICE_ENABLED:
-        st.markdown("<h3 style='color: #f1f5f9; font-size: 1rem; margin-bottom: 1rem;'>🎤 Voice Input</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='color: #f1f5f9; font-size: 1rem; margin-bottom: 1rem;'>🎤 Voice Features</h3>", unsafe_allow_html=True)
         
-        # Language selection
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            selected_lang = st.selectbox(
-                "Output Language",
-                list(LANGUAGE_CODES.keys()),
-                index=list(LANGUAGE_CODES.keys()).index(st.session_state.selected_language),
-                key="language_select"
-            )
-            st.session_state.selected_language = selected_lang
+        # Language selection for voice output
+        selected_lang = st.selectbox(
+            "Select Voice Language",
+            list(LANGUAGE_CODES.keys()),
+            index=list(LANGUAGE_CODES.keys()).index(st.session_state.selected_language),
+            key="language_select"
+        )
+        st.session_state.selected_language = selected_lang
+        lang_code = LANGUAGE_CODES[selected_lang]
+        st.caption(f"Language: {selected_lang} ({lang_code})")
         
-        with col2:
-            lang_code = LANGUAGE_CODES[selected_lang]
-            st.caption(f"({lang_code})")
+        # Audio file upload
+        st.markdown("<p style='font-size: 0.85rem; color: #94a3b8; margin-top: 1rem;'>📁 Upload Audio File</p>", unsafe_allow_html=True)
+        uploaded_audio = st.file_uploader(
+            "Choose an audio file (.wav, .mp3, .m4a)",
+            type=["wav", "mp3", "m4a"],
+            label_visibility="collapsed",
+            key="voice_uploader"
+        )
         
-        # Voice input tabs
-        voice_tab1, voice_tab2 = st.tabs(["🎙️ Record", "📁 Upload"])
-        
-        with voice_tab1:
-            st.markdown("<p style='font-size: 0.85rem; color: #94a3b8;'>Record your question</p>", unsafe_allow_html=True)
-            audio_input = st.audio_input(
-                "Record your voice",
-                label_visibility="collapsed",
-                key="voice_recorder"
-            )
+        if uploaded_audio:
+            # Save uploaded file to temp
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
+                tmp_file.write(uploaded_audio.getbuffer())
+                temp_audio_path = tmp_file.name
             
-            if audio_input:
-                # Save audio to temp file
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
-                    tmp_file.write(audio_input.getbuffer())
-                    temp_audio_path = tmp_file.name
-                
-                # Process voice
-                with st.spinner("🔄 Processing voice..."):
-                    result = process_voice_input(temp_audio_path, lang_code)
+            # Process voice
+            st.info("⏳ Processing audio...")
+            try:
+                result = process_voice_input(temp_audio_path, lang_code)
                 
                 if result['success']:
                     # Add to chat history
@@ -514,48 +509,14 @@ with st.sidebar:
                     if result['audio_file']:
                         st.session_state.last_voice_response_audio = result['audio_file']
                     
-                    st.success("✅ Voice processed successfully!")
+                    st.success("✅ Voice processed!")
                     st.rerun()
                 else:
                     st.error(f"❌ {result['response_text']}")
-                
-                # Clean up temp file
-                if os.path.exists(temp_audio_path):
-                    os.remove(temp_audio_path)
-        
-        with voice_tab2:
-            st.markdown("<p style='font-size: 0.85rem; color: #94a3b8;'>Upload audio file (.wav, .mp3, .m4a)</p>", unsafe_allow_html=True)
-            uploaded_audio = st.file_uploader(
-                "Upload audio",
-                type=["wav", "mp3", "m4a"],
-                label_visibility="collapsed",
-                key="voice_uploader"
-            )
-            
-            if uploaded_audio:
-                # Save uploaded file to temp
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
-                    tmp_file.write(uploaded_audio.getbuffer())
-                    temp_audio_path = tmp_file.name
-                
-                # Process voice
-                with st.spinner("🔄 Processing audio file..."):
-                    result = process_voice_input(temp_audio_path, lang_code)
-                
-                if result['success']:
-                    # Add to chat history
-                    st.session_state.messages.append({"role": "user", "content": f"🎤 {result['user_text']}"})
-                    st.session_state.messages.append({"role": "assistant", "content": result['response_text']})
-                    
-                    # Store audio for playback
-                    if result['audio_file']:
-                        st.session_state.last_voice_response_audio = result['audio_file']
-                    
-                    st.success("✅ Audio processed successfully!")
-                    st.rerun()
-                else:
-                    st.error(f"❌ {result['response_text']}")
-                
+            except Exception as e:
+                logger.error(f"Voice upload error: {str(e)}", exc_info=True)
+                st.error(f"Error processing audio: {str(e)[:100]}")
+            finally:
                 # Clean up temp file
                 if os.path.exists(temp_audio_path):
                     os.remove(temp_audio_path)
@@ -703,49 +664,55 @@ st.markdown("</div>", unsafe_allow_html=True)
 # CHAT INPUT
 # ============================================
 
-# Create columns for input and voice button
-col1, col2 = st.columns([6, 1])
+if prompt := st.chat_input("Ask about insurance claims or savings growth..."):
+    # Add user message
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    
+    # Generate response
+    response = generate_response(prompt)
+    st.session_state.messages.append({"role": "assistant", "content": response})
+    
+    # Rerun to display
+    st.rerun()
 
-with col1:
-    if prompt := st.chat_input("Ask about insurance claims or savings growth..."):
-        # Add user message
-        st.session_state.messages.append({"role": "user", "content": prompt})
+# Voice response generation section
+if VOICE_ENABLED and st.session_state.messages:
+    # Find last assistant message
+    last_assistant_msg = None
+    for msg in reversed(st.session_state.messages):
+        if msg["role"] == "assistant":
+            last_assistant_msg = msg
+            break
+    
+    if last_assistant_msg:
+        st.divider()
+        col1, col2, col3 = st.columns([2, 1, 1])
         
-        # Generate response
-        response = generate_response(prompt)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+        with col1:
+            st.markdown("#### 🔊 Generate Voice Response")
         
-        # Rerun to display
-        st.rerun()
-
-# Voice response button for latest message
-with col2:
-    if VOICE_ENABLED and st.session_state.messages:
-        last_assistant_msg = None
-        for msg in reversed(st.session_state.messages):
-            if msg["role"] == "assistant":
-                last_assistant_msg = msg
-                break
-        
-        if last_assistant_msg:
-            if st.button("🎵", help=f"Generate voice response in {st.session_state.selected_language}", key="generate_voice"):
-                with st.spinner(f"Generating voice response in {st.session_state.selected_language}..."):
-                    try:
-                        lang_code = LANGUAGE_CODES[st.session_state.selected_language]
-                        audio_file_output = f"temp_response_{int(time.time())}.mp3"
-                        
-                        # Clean text from markdown
-                        response_text = last_assistant_msg["content"]
-                        
-                        # Convert to speech
+        with col2:
+            if st.button("🎵 Generate", key="generate_voice_btn", use_container_width=True):
+                try:
+                    lang_code = LANGUAGE_CODES[st.session_state.selected_language]
+                    audio_file_output = f"temp_response_{int(time.time())}.mp3"
+                    
+                    # Clean text from markdown
+                    response_text = last_assistant_msg["content"]
+                    
+                    # Convert to speech
+                    with st.spinner(f"Generating voice in {st.session_state.selected_language}..."):
                         audio_path = text_to_speech(response_text, audio_file_output, language=lang_code)
-                        
-                        if audio_path:
-                            st.session_state.last_voice_response_audio = audio_path
-                            st.success("✅ Voice response generated!")
-                            st.rerun()
-                        else:
-                            st.error("❌ Could not generate voice response")
-                    except Exception as e:
-                        logger.error(f"Voice generation error: {str(e)}")
-                        st.error(f"Error: {str(e)[:100]}")
+                    
+                    if audio_path:
+                        st.session_state.last_voice_response_audio = audio_path
+                        st.success(f"✅ Voice generated in {st.session_state.selected_language}!")
+                        st.rerun()
+                    else:
+                        st.error("❌ Could not generate voice response")
+                except Exception as e:
+                    logger.error(f"Voice generation error: {str(e)}", exc_info=True)
+                    st.error(f"Error: {str(e)[:100]}")
+        
+        with col3:
+            st.caption(f"({LANGUAGE_CODES[st.session_state.selected_language]})")
