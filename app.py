@@ -58,24 +58,34 @@ st.set_page_config(
 )
 
 # ============================================
-# CUSTOM CSS - MINIMAL CHATGPT STYLE
+# CUSTOM CSS - PREMIUM MODERN UI
 # ============================================
 st.markdown("""
 <style>
-    /* Import Clean Font */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+    /* ===================================
+       PREMIUM TYPOGRAPHY
+       =================================== */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@400;500;600;700&display=swap');
     
     * {
-        font-family: 'Inter', sans-serif;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        letter-spacing: -0.01em;
     }
     
-    /* Warm Cream Background */
+    h1, h2, h3 {
+        font-family: 'Poppins', sans-serif;
+        font-weight: 600;
+    }
+    
+    /* ===================================
+       GLOBAL LAYOUT
+       =================================== */
     .stApp {
-        background: #FAF9F7;
+        background: linear-gradient(135deg, #FAF9F7 0%, #F5F3F0 100%);
     }
     
     .main {
-        background: #FAF9F7;
+        background: transparent;
     }
     
     /* Hide Streamlit Branding */
@@ -83,230 +93,364 @@ st.markdown("""
     footer {visibility: hidden;}
     header {visibility: hidden;}
     
-    /* Remove Default Padding */
+    /* Enhanced Padding & Spacing */
     .block-container {
         padding: 0 !important;
         max-width: 100% !important;
     }
     
-    /* Top Bar - Deep Emerald */
+    /* ===================================
+       PREMIUM TOP BAR / HEADER
+       =================================== */
     .top-bar {
-        background: #047857;
-        padding: 0.75rem 1.5rem;
+        background: linear-gradient(135deg, #047857 0%, #059669 100%);
+        padding: 1.25rem 2rem;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        border-bottom: 1px solid #047857;
+        border-bottom: 3px solid rgba(4, 120, 87, 0.1);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
         position: sticky;
         top: 0;
         z-index: 1000;
+        backdrop-filter: blur(10px);
     }
     
     .app-title {
         color: #FFFFFF;
-        font-size: 0.95rem;
-        font-weight: 600;
+        font-size: 1.5rem;
+        font-weight: 700;
+        font-family: 'Poppins', sans-serif;
+        letter-spacing: -0.02em;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     }
     
     .trust-badge {
-        background: rgba(217, 119, 6, 0.1);
-        color: #D97706;
-        padding: 0.25rem 0.75rem;
-        border-radius: 6px;
-        font-size: 0.75rem;
-        border: 1px solid rgba(217, 119, 6, 0.3);
+        background: rgba(255, 255, 255, 0.15);
+        backdrop-filter: blur(10px);
+        color: #FFFFFF;
+        padding: 0.5rem 1.25rem;
+        border-radius: 50px;
+        font-size: 0.875rem;
+        font-weight: 500;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
     }
     
-    /* Sidebar Styling */
+    /* ===================================
+       PREMIUM SIDEBAR
+       =================================== */
     [data-testid="stSidebar"] {
         background: #FFFFFF;
         border-right: 1px solid #E5E7EB;
+        box-shadow: 4px 0 20px rgba(0, 0, 0, 0.06);
+        padding-top: 2rem;
     }
     
     [data-testid="stSidebar"] > div:first-child {
         background: #FFFFFF;
+        padding: 0 1.5rem;
     }
     
-    /* Sidebar Buttons */
-    [data-testid="stSidebar"] .stButton > button {
-        background: transparent;
-        color: #047857;
-        border: 1px solid #047857;
-        border-radius: 6px;
-        padding: 0.6rem 1rem;
+    /* Sidebar Section Cards */
+    [data-testid="stSidebar"] h3 {
+        color: #1F2937;
         font-size: 0.875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #E5E7EB;
+    }
+    
+    /* Sidebar Standard Buttons */
+    [data-testid="stSidebar"] .stButton > button {
+        background: #F9FAFB;
+        color: #1F2937;
+        border: 1px solid #E5E7EB;
+        border-radius: 12px;
+        padding: 0.875rem 1.25rem;
+        font-size: 0.9375rem;
+        font-weight: 500;
         width: 100%;
-        transition: all 0.2s;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     }
     
     [data-testid="stSidebar"] .stButton > button:hover {
-        background: #D1FAE5;
+        background: linear-gradient(135deg, #D1FAE5 0%, #A7F3D0 100%);
         border-color: #047857;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(4, 120, 87, 0.15);
     }
     
-    /* New Chat Button */
+    /* Premium "New Chat" Button */
     .stButton > button[key="new_chat"] {
-        background: #047857 !important;
+        background: linear-gradient(135deg, #047857 0%, #059669 100%) !important;
         color: white !important;
         border: none !important;
+        border-radius: 12px !important;
+        padding: 1rem 1.5rem !important;
+        font-size: 1rem !important;
+        font-weight: 600 !important;
+        box-shadow: 0 4px 16px rgba(4, 120, 87, 0.3) !important;
+        transition: all 0.3s ease !important;
     }
     
     .stButton > button[key="new_chat"]:hover {
-        background: #065F46 !important;
+        background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
+        transform: translateY(-3px) !important;
+        box-shadow: 0 8px 24px rgba(4, 120, 87, 0.4) !important;
     }
     
-    /* Chat Container - Narrow & Centered */
+    /* ===================================
+       PREMIUM CHAT CONTAINER
+       =================================== */
     .chat-container {
-        max-width: 800px;
+        max-width: 900px;
         margin: 0 auto;
-        padding: 2rem 1rem 6rem 1rem;
+        padding: 3rem 2rem 8rem 2rem;
     }
     
-    /* Chat Messages */
+    /* Chat Messages - Modern Card Style */
     .stChatMessage {
         background: transparent;
-        padding: 1rem 0;
+        padding: 1.25rem 0;
+        margin-bottom: 0.5rem;
     }
     
-    /* Assistant Messages */
+    /* Bot Messages - Premium White Cards */
     [data-testid="stChatMessageContent"] {
         background: #FFFFFF;
         border: 1px solid #E5E7EB;
-        border-radius: 12px;
-        padding: 1rem 1.25rem;
+        border-radius: 16px;
+        padding: 1.5rem 1.75rem;
         color: #1F2937;
-        font-size: 0.9rem;
-        line-height: 1.6;
+        font-size: 1rem;
+        line-height: 1.75;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+        transition: all 0.3s ease;
     }
     
-    /* User Messages */
+    [data-testid="stChatMessageContent"]:hover {
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        transform: translateY(-2px);
+    }
+    
+    /* User Messages - Emerald Gradient */
     [data-testid="stChatMessage"][data-testid*="user"] [data-testid="stChatMessageContent"] {
-        background: #D1FAE5;
+        background: linear-gradient(135deg, #D1FAE5 0%, #A7F3D0 100%);
         color: #1F2937;
         border: none;
+        box-shadow: 0 2px 12px rgba(4, 120, 87, 0.15);
     }
     
-    /* Chat Input */
+    [data-testid="stChatMessage"][data-testid*="user"] [data-testid="stChatMessageContent"]:hover {
+        box-shadow: 0 4px 20px rgba(4, 120, 87, 0.2);
+    }
+    
+    /* ===================================
+       PREMIUM CHAT INPUT
+       =================================== */
     .stChatInputContainer {
         position: fixed;
         bottom: 0;
         left: 21rem;
         right: 0;
-        background: #FAF9F7;
+        background: linear-gradient(to top, #FFFFFF 0%, rgba(255, 255, 255, 0.98) 100%);
         border-top: 1px solid #E5E7EB;
-        padding: 1rem;
+        padding: 1.5rem 2rem;
         z-index: 999;
+        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+        backdrop-filter: blur(10px);
     }
     
     .stChatInputContainer > div {
-        max-width: 800px;
+        max-width: 900px;
         margin: 0 auto;
     }
     
     .stChatInput > div {
         background: #FFFFFF;
-        border: 1px solid #E5E7EB;
-        border-radius: 12px;
+        border: 2px solid #E5E7EB;
+        border-radius: 16px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+        transition: all 0.3s ease;
+    }
+    
+    .stChatInput > div:focus-within {
+        border-color: #047857;
+        box-shadow: 0 4px 24px rgba(4, 120, 87, 0.2);
+        transform: translateY(-2px);
     }
     
     .stChatInput input {
         color: #1F2937;
-        font-size: 0.9rem;
+        font-size: 1rem;
+        padding: 0.875rem 1.25rem;
     }
     
     .stChatInput input::placeholder {
-        color: #6B7280;
+        color: #9CA3AF;
+        font-weight: 400;
     }
     
-    /* Empty State */
+    /* ===================================
+       PREMIUM WELCOME / EMPTY STATE
+       =================================== */
     .empty-state {
         text-align: center;
-        padding: 4rem 2rem;
+        padding: 5rem 2rem;
         color: #6B7280;
+        animation: fadeIn 0.6s ease-in;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
     }
     
     .empty-state h2 {
         color: #1F2937;
-        font-size: 1.5rem;
-        font-weight: 600;
-        margin-bottom: 0.5rem;
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+        background: linear-gradient(135deg, #047857 0%, #059669 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
     }
     
     .empty-state p {
-        font-size: 0.95rem;
-        margin-bottom: 2rem;
+        font-size: 1.125rem;
+        margin-bottom: 3rem;
+        color: #6B7280;
+        font-weight: 400;
     }
     
-    /* Suggestion Buttons */
+    /* ===================================
+       PREMIUM QUICK ACTION BUTTONS
+       =================================== */
     .suggestion-btn {
-        background: #D1FAE5;
-        border: 1px solid #047857;
+        background: #FFFFFF;
+        border: 2px solid #E5E7EB;
         color: #1F2937;
-        padding: 0.75rem 1rem;
-        border-radius: 8px;
+        padding: 1rem 1.5rem;
+        border-radius: 14px;
         margin: 0.5rem;
         cursor: pointer;
-        font-size: 0.85rem;
-        transition: all 0.2s;
+        font-size: 0.9375rem;
+        font-weight: 500;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         display: inline-block;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     }
     
     .suggestion-btn:hover {
-        background: #047857;
+        background: linear-gradient(135deg, #047857 0%, #059669 100%);
         color: #FFFFFF;
-        border-color: #047857;
+        border-color: transparent;
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(4, 120, 87, 0.25);
     }
     
-    /* Warning Card */
+    /* Quick Action Buttons (Streamlit native) */
+    .stButton > button[kind="primary"] {
+        background: #FFFFFF !important;
+        border: 2px solid #E5E7EB !important;
+        color: #1F2937 !important;
+        padding: 1rem 1.5rem !important;
+        border-radius: 14px !important;
+        font-size: 0.9375rem !important;
+        font-weight: 500 !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06) !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    }
+    
+    .stButton > button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #047857 0%, #059669 100%) !important;
+        color: #FFFFFF !important;
+        border-color: transparent !important;
+        transform: translateY(-4px) !important;
+        box-shadow: 0 8px 24px rgba(4, 120, 87, 0.25) !important;
+    }
+    
+    /* ===================================
+       PREMIUM WARNING & INFO CARDS
+       =================================== */
     .warning-card {
-        background: rgba(245, 158, 11, 0.1);
-        border: 1px solid rgba(245, 158, 11, 0.3);
-        border-radius: 8px;
-        padding: 1rem;
-        margin: 1rem 0;
-        color: #F59E0B;
-        font-size: 0.85rem;
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(245, 158, 11, 0.12) 100%);
+        border: 2px solid rgba(245, 158, 11, 0.3);
+        border-radius: 12px;
+        padding: 1.25rem;
+        margin: 1.5rem 0;
+        color: #D97706;
+        font-size: 0.9375rem;
+        box-shadow: 0 2px 8px rgba(245, 158, 11, 0.1);
     }
     
-    /* Sidebar Text */
+    /* ===================================
+       SIDEBAR TEXT & ELEMENTS
+       =================================== */
     [data-testid="stSidebar"] p, [data-testid="stSidebar"] span {
-        color: #1F2937;
-        font-size: 0.85rem;
+        color: #374151;
+        font-size: 0.9375rem;
+        line-height: 1.6;
     }
     
-    /* Voice input styling */
+    [data-testid="stSidebar"] .stCaption {
+        color: #6B7280;
+        font-size: 0.875rem;
+    }
+    
+    /* Voice & Audio Inputs */
     [data-testid="stSidebar"] .stAudio,
     [data-testid="stSidebar"] .stSelectbox {
-        margin-bottom: 0.5rem;
+        margin-bottom: 0.75rem;
     }
     
-    /* Chat input container */
+    /* Selectbox Styling */
+    [data-testid="stSidebar"] .stSelectbox > div > div {
+        background: #F9FAFB;
+        border: 1px solid #E5E7EB;
+        border-radius: 10px;
+        padding: 0.625rem 1rem;
+        font-size: 0.9375rem;
+    }
+    
+    /* ===================================
+       VOICE BUTTON & CONTROLS
+       =================================== */
     .stChatInput button[data-testid="baseButton-secondary"] {
         color: #1F2937;
         border: 1px solid #E5E7EB;
     }
     
-    /* Voice & Generate buttons */
     [data-testid="baseButton-secondary"] button {
         background: #FFFFFF;
         border: 1px solid #E5E7EB;
+        border-radius: 10px;
+        transition: all 0.3s ease;
     }
     
     [data-testid="baseButton-secondary"] button:hover {
         background: #D1FAE5;
+        border-color: #047857;
     }
     
-    /* Professional Mic Button - Inside Input ChatGPT Style */
+    /* ===================================
+       PREMIUM MICROPHONE BUTTON
+       =================================== */
     [data-testid="stChatInputContainer"] {
         position: relative;
     }
     
-    /* Unified Input with Mic Button */
     .input-wrapper {
         position: relative;
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: 0.75rem;
     }
     
     .input-wrapper > div:first-child {
@@ -317,77 +461,150 @@ st.markdown("""
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        width: 38px !important;
-        height: 38px !important;
+        width: 48px !important;
+        height: 48px !important;
         padding: 0 !important;
         border-radius: 50% !important;
-        background: transparent !important;
-        border: none !important;
+        background: linear-gradient(135deg, #FFFFFF 0%, #F9FAFB 100%) !important;
+        border: 2px solid #E5E7EB !important;
         color: #047857 !important;
-        font-size: 1.2rem !important;
+        font-size: 1.375rem !important;
         cursor: pointer !important;
-        transition: all 0.2s ease !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
         flex-shrink: 0 !important;
         position: relative !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
     }
     
     button[key="voice_record_btn"]:hover {
-        color: #065F46 !important;
-        background: rgba(4, 120, 87, 0.05) !important;
+        color: #FFFFFF !important;
+        background: linear-gradient(135deg, #047857 0%, #059669 100%) !important;
+        border-color: transparent !important;
+        transform: scale(1.1) !important;
+        box-shadow: 0 4px 16px rgba(4, 120, 87, 0.3) !important;
     }
     
     button[key="voice_record_btn"]:active {
-        background: rgba(4, 120, 87, 0.15) !important;
-        color: #065F46 !important;
-        transform: scale(0.95) !important;
+        transform: scale(1.05) !important;
+        box-shadow: 0 2px 12px rgba(4, 120, 87, 0.4) !important;
     }
     
-    /* Voice generation & other buttons */
+    /* Voice generation & processing buttons */
     button[key="gen_voice_btn"],
     button[key="process_voice"],
     button[key="gen_voice_go"] {
-        min-height: 44px;
-        font-size: 1.2rem;
+        min-height: 48px;
+        font-size: 1rem;
         display: flex;
         align-items: center;
         justify-content: center;
+        border-radius: 10px;
+        font-weight: 500;
     }
     
     /* Audio input styling */
     [data-testid="stAudioInput"] {
-        margin: 1rem 0;
+        margin: 1.25rem 0;
+        border-radius: 12px;
     }
     
-    /* Tabs styling */
+    /* ===================================
+       PREMIUM TABS STYLING
+       =================================== */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0.5rem;
+    }
+    
     .stTabs [data-baseweb="tab-list"] button {
-        background: #FAF9F7;
-        border: 1px solid #E5E7EB;
+        background: #F9FAFB;
+        border: 2px solid #E5E7EB;
         color: #1F2937;
-        font-size: 0.85rem;
+        font-size: 0.9375rem;
+        font-weight: 500;
+        padding: 0.75rem 1.5rem;
+        border-radius: 10px;
+        transition: all 0.3s ease;
+    }
+    
+    .stTabs [data-baseweb="tab-list"] button:hover {
+        background: #D1FAE5;
+        border-color: #047857;
     }
     
     .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-        background: #047857;
-        border: 1px solid #047857;
+        background: linear-gradient(135deg, #047857 0%, #059669 100%);
+        border: 2px solid transparent;
         color: #FFFFFF;
+        box-shadow: 0 2px 12px rgba(4, 120, 87, 0.3);
     }
     
-    /* Scrollbar */
+    /* ===================================
+       PREMIUM SCROLLBAR
+       =================================== */
     ::-webkit-scrollbar {
-        width: 8px;
+        width: 10px;height: 10px;
     }
     
     ::-webkit-scrollbar-track {
-        background: #FAF9F7;
+        background: #F9FAFB;
+        border-radius: 10px;
     }
     
     ::-webkit-scrollbar-thumb {
-        background: #D1D5DB;
-        border-radius: 4px;
+        background: linear-gradient(135deg, #D1D5DB 0%, #9CA3AF 100%);
+        border-radius: 10px;
+        border: 2px solid #F9FAFB;
+        transition: all 0.3s ease;
     }
     
     ::-webkit-scrollbar-thumb:hover {
-        background: #047857;
+        background: linear-gradient(135deg, #047857 0%, #059669 100%);
+    }
+    
+    /* ===================================
+       PREMIUM DIVIDERS
+       =================================== */
+    hr {
+        border: none;
+        height: 1px;
+        background: linear-gradient(90deg, transparent 0%, #E5E7EB 50%, transparent 100%);
+        margin: 2rem 0;
+    }
+    
+    /* ===================================
+       SMOOTH ANIMATIONS
+       =================================== */
+    .stButton > button,
+    [data-testid="stChatMessageContent"],
+    .stChatInput > div {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    /* Loading Spinner */
+    .stSpinner > div {
+        border-color: #047857 !important;
+    }
+    
+    /* Success/Error/Warning Messages */
+    .stSuccess {
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(4, 120, 87, 0.1) 100%);
+        border-left: 4px solid #10B981;
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+    }
+    
+    .stError {
+        background: linear-gradient(135deg, rgba(220, 38, 38, 0.1) 0%, rgba(185, 28, 28, 0.1) 100%);
+        border-left: 4px solid #DC2626;
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+    }
+    
+    .stWarning {
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(217, 119, 6, 0.1) 100%);
+        border-left: 4px solid #F59E0B;
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
     }
 
 </style>
