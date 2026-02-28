@@ -658,29 +658,16 @@ st.markdown("</div>", unsafe_allow_html=True)
 input_container = st.container()
 
 with input_container:
-    col1, col2, col3 = st.columns([5, 1, 1])
+    col1, col2 = st.columns([0.5, 4.5])
     
     with col1:
-        prompt = st.chat_input("Ask about insurance claims or savings growth...")
-    
-    with col2:
-        # Voice recording button
+        # Small voice recording button before input
         if VOICE_ENABLED:
-            if st.button("🎤", help="Click to record voice", key="voice_record_btn", use_container_width=True):
+            if st.button("🎤", help="Record voice", key="voice_record_btn", use_container_width=True):
                 st.session_state.show_voice_recorder = True
     
-    with col3:
-        # Voice generation button
-        if VOICE_ENABLED:
-            last_assistant_msg = None
-            for msg in reversed(st.session_state.messages):
-                if msg["role"] == "assistant":
-                    last_assistant_msg = msg
-                    break
-            
-            if last_assistant_msg:
-                if st.button("🎵", help="Generate voice", key="gen_voice_btn", use_container_width=True):
-                    st.session_state.show_voice_gen = True
+    with col2:
+        prompt = st.chat_input("Ask about insurance claims or savings growth...")
 
 # Voice recorder section (hidden by default)
 if VOICE_ENABLED and st.session_state.get("show_voice_recorder", False):
