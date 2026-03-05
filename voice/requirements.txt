@@ -1,0 +1,18 @@
+# Voice Assistant Dependencies
+
+# Speech-to-Text (Whisper)
+openai-whisper>=20231117
+
+# Text-to-Speech (gTTS)
+gtts>=2.5.0
+
+# Audio recording
+sounddevice>=0.4.6
+scipy>=1.11.0
+
+# Audio playback (optional but recommended)
+playsound>=1.3.0
+
+# Additional dependencies for Whisper
+torch>=2.0.0
+torchaudio>=2.0.0
