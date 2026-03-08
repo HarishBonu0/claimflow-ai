@@ -288,7 +288,6 @@ function App() {
           // Clean up the URL after playing
           audio.onended = () => URL.revokeObjectURL(audioUrl);
         } catch (audioErr) {
-          console.error('Error playing backend audio:', audioErr);
           // Fallback to browser TTS
           playBrowserTTS(data.response);
         }
