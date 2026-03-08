@@ -6,6 +6,11 @@ Tests all components: RAG + LLM + Voice Assistant
 import os
 import sys
 
+# Add project root to Python path for imports
+project_root = os.path.dirname(os.path.abspath(__file__))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 print("=" * 70)
 print("INTEGRATION TEST - ClaimFlow AI")
 print("=" * 70)

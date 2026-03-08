@@ -187,8 +187,9 @@ Listen: Get answer you requested in Tamil
 3. **Processing**
    - Safety filter checks question
    - Intent classification
+   - Infers intent from imperfect grammar and short phrases
    - Retrieves relevant knowledge base info
-   - Generates response using AI
+   - Generates concise, action-based response (5-7 simple sentences)
 
 4. **Text-to-Speech** (TTS)
    - Uses gTTS (Google Text-to-Speech)
@@ -218,6 +219,7 @@ Listen: Get answer you requested in Tamil
 - No logging of personal audio
 - Safety checks prevent inappropriate queries
 - Follows app's safety guidelines
+- Follows canonical chatbot behavior rules in `CHATBOT_RESPONSE_GUIDELINES.md`
 
 ---
 

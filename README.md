@@ -167,6 +167,20 @@ print(answer)
 
 ---
 
+## Chatbot Behavior Rules
+
+The chatbot behavior is standardized across prompt logic, runtime handling, and docs.
+
+- Understand imperfect grammar and short inputs.
+- Infer user intent before asking follow-up questions.
+- Respond with user-focused, action-based steps.
+- Keep responses concise (5-7 simple sentences or short step lists).
+- Use plain language with practical guidance.
+
+Reference: [CHATBOT_RESPONSE_GUIDELINES.md](CHATBOT_RESPONSE_GUIDELINES.md)
+
+---
+
 ## 📊 System Stats
 
 | Metric | Value |
@@ -211,6 +225,7 @@ Generates simple answer using Gemini Flash.
 ## 📖 Documentation
 
 - [GEMINI_SETUP.md](GEMINI_SETUP.md) - Complete API setup
+- [CHATBOT_RESPONSE_GUIDELINES.md](CHATBOT_RESPONSE_GUIDELINES.md) - Canonical response and prompt rules
 - [rag/retriever.py](rag/retriever.py) - RAG documentation
 - [llm/gemini_client.py](llm/gemini_client.py) - Gemini client docs
 - [llm/integration_example.py](llm/integration_example.py) - Examples
@@ -249,7 +264,7 @@ python llm/integration_example.py
 ## 🚀 Ready for Production
 
 ✅ All components tested - **SYSTEM FULLY WORKING**
-✅ Gemma 3.1B model integrated - **TESTED & VERIFIED**  
+✅ Gemini model integrated - **TESTED & VERIFIED**  
 ✅ 5 test questions answered successfully - **ALL PASSING**
 ✅ Error handling implemented - **PRODUCTION GRADE**
 ✅ Documentation complete - **COMPREHENSIVE**
@@ -291,7 +306,7 @@ python llm/integration_example.py
 
 **Version**: 1.0  
 **Status**: ✅ **PRODUCTION READY - ALL SYSTEMS GO**  
-**Model**: Gemma 3.1B (Type: Lightweight, Fast, Reliable)  
+**Model**: Gemini (Type: Lightweight, Fast, Reliable)  
 **Database**: ChromaDB with 15 optimized knowledge chunks  
 **Last Updated**: February 28, 2026  
 **API**: Google AI Studio (Gemini API)

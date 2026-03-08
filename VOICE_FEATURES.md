@@ -265,9 +265,14 @@ audio_file = text_to_speech("Hello", language='en')
 
 ### Voice Input Safety
 1. **Pre-LLM Safety Filter** blocks prohibited queries BEFORE speech generation
-2. **Intent Classification** identifies inappropriate requests
+2. **Intent Classification** infers intent from imperfect grammar and identifies inappropriate requests
 3. **Content Validation** ensures no malicious audio
 4. **Error Handling** gracefully manages transcription failures
+
+Response policy follows `CHATBOT_RESPONSE_GUIDELINES.md`:
+- User-focused language
+- Action-based steps
+- Concise responses (5-7 simple sentences)
 
 ### Language Safety
 - **Consistent language handling** across STT/TTS

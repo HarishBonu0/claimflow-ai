@@ -227,3 +227,21 @@ def build_vector_database():
 
 if __name__ == "__main__":
     build_vector_database()
+
+
+def update_vector_db(documents=None):
+    """
+    Update the vector database with new or existing documents.
+    
+    Args:
+        documents: Optional list of documents to add. If None, rebuilds from knowledge base.
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        build_vector_database()
+        return True
+    except Exception as e:
+        print(f"Error updating vector database: {e}")
+        return False

@@ -174,7 +174,7 @@ if __name__ == "__main__":
     
     for query, expected_safe in test_queries:
         is_safe, message = check_safety(query)
-        status = "✅ PASS" if (is_safe == expected_safe) else "❌ FAIL"
+        status = "[PASS]" if (is_safe == expected_safe) else "[FAIL]"
         safety_status = "SAFE" if is_safe else "BLOCKED"
         
         print(f"\n{status} | {safety_status}")

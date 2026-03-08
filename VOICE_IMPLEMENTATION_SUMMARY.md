@@ -311,9 +311,14 @@ Voice: Tamil audio of response
 
 ### Voice Input Safety
 ✅ Pre-LLM safety filter prevents prohibited queries
-✅ Intent classification identifies risks
+✅ Intent classification handles imperfect grammar and identifies risks
 ✅ No sensitive data stored
 ✅ Temporary files cleaned automatically
+
+### Response Guidance Consistency
+✅ Prompt, docs, and runtime logic follow `CHATBOT_RESPONSE_GUIDELINES.md`
+✅ Responses are user-focused and action-based
+✅ Responses stay concise (5-7 simple sentences)
 
 ### Language Safety
 ✅ All language codes validated

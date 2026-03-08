@@ -9,24 +9,24 @@ import sys
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from voice.stt import speech_to_text
+from voice.stt import speech_to_text, speech_to_text_with_retry, LANGUAGE_MAP
 from voice.tts import text_to_speech, play_audio
 
 
 def voice_chat(audio_file, output_audio="response.mp3", language='en'):
     """
-    Complete voice interaction pipeline.
+    Complete voice interaction pipeline with multilingual support.
     
     Flow:
-    1. Convert user speech to text (STT)
+    1. Convert user speech to text (STT) with language support
     2. Retrieve context from RAG
     3. Generate response using Gemini
-    4. Convert response to speech (TTS)
+    4. Convert response to speech (TTS) in selected language
     
     Args:
         audio_file: Path to user's audio input
         output_audio: Path for AI response audio
-        language: Language code for TTS (en, hi, te)
+        language: Language code (en, hi, te, ta, kn) or name (English, Hindi, etc.)
     
     Returns:
         Dictionary with:
@@ -43,18 +43,25 @@ def voice_chat(audio_file, output_audio="response.mp3", language='en'):
         'success': False
     }
     
-    # Step 1: Speech to Text
+    # Step 1: Speech to Text with language support
     print("\n[Step 1/4] Converting speech to text...")
-    user_text = speech_to_text(audio_file)
+    print(f"  Language: {language}")
+    
+    try:
+        # Use retry logic for better reliability
+        user_text = speech_to_text_with_retry(audio_file, language=language, max_retries=1)
+    except Exception as e:
+        print(f"  Error with retry: {e}, falling back to simple transcription")
+        user_text = speech_to_text(audio_file, language=language, auto_detect=False)
     
     if user_text.startswith("Error:"):
         result['user_text'] = user_text
-        result['ai_text'] = "Sorry, I could not understand your question. Please try again."
+        result['ai_text'] = "Sorry, I could not understand your question. Please speak more clearly and try again."
         print(f"✗ STT failed: {user_text}")
         return result
     
     result['user_text'] = user_text
-    print(f"✓ User said: {user_text}")
+    print(f"✓ User said: {user_text[:100]}...")
     
     # Step 2: Retrieve context from RAG
     print("\n[Step 2/4] Retrieving context from knowledge base...")

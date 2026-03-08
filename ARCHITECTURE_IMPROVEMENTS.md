@@ -28,13 +28,15 @@ Upgraded ClaimFlow AI from **6.5/10** to **9.0/10** architecture score by implem
 **File**: `llm/intent_classifier.py` (NEW)
 
 - **5 intent categories**: insurance_claim, financial_literacy, insurance_general, prohibited, general
-- **Keyword-based classification** with confidence scoring
+- **Robust normalization + keyword classification** with confidence scoring
+- Handles imperfect grammar, short phrases, and common shorthand/typos
 - **Routing optimization**: Route queries efficiently before retrieval
 
 **Impact**:
 - Logs user intent for analytics and debugging
 - Foundation for future query routing (e.g., different knowledge bases)
 - Helps identify prohibited queries early
+- Improves intent inference for inputs like "how claim insurance" or "car accident claim"
 
 ---
 

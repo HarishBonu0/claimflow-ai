@@ -245,7 +245,7 @@ User Query
   • Insurance topic? Standard response
   • Cross-domain? Multiple disclaimers
     ↓
-[Gemma 3.1B Model] + Safe System Prompt
+[Gemini Model] + Safe System Prompt
   • Simple English generation
   • Safety rule enforcement
   • Disclaimer injection
@@ -427,7 +427,7 @@ Status: ✅ Deployed and live
 - ✅ Safety disclaimers auto-included
 - ✅ System prompt enforces rules
 - ✅ No risky recommendations given
-- ✅ Gemma model performs well
+- ✅ Gemini model performs well
 - ✅ All tests passing
 - ✅ Code committed to GitHub
 - ✅ Documentation complete
@@ -453,6 +453,6 @@ All with **strict safety guardrails** and **educational-only positioning**.
 
 **Last Updated:** February 28, 2026  
 **System:** ClaimFlow AI v2.0 (Insurance + Financial Literacy)  
-**Model:** Gemma 3.1B  
+**Model:** Gemini  
 **Database:** ChromaDB (27 chunks)  
 **Deployment:** GitHub main branch ✅

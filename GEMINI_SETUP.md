@@ -1,18 +1,18 @@
-# Gemma AI Integration Setup Guide
+# Gemini AI Integration Setup Guide
 
 ## Overview
-This document explains how to set up and use the Gemma AI integration with the RAG system.
+This document explains how to set up and use the Gemini AI integration with the RAG system.
 
 ## What is Included
 
-- `llm/gemini_client.py` - Gemma AI API integration (lightweight, fast model)
-- `llm/integration_example.py` - Complete RAG + Gemma example
+- `llm/gemini_client.py` - Gemini AI API integration (lightweight, fast model)
+- `llm/integration_example.py` - Complete RAG + Gemini example
 - Function: `retrieve_context(query)` - RAG retrieval (from rag/retriever.py)
-- Function: `generate_response(query, context)` - Gemma generation
+- Function: `generate_response(query, context)` - Gemini generation
 
 ## Model Information
 
-**Current Model**: Gemma 3.1B (Google's lightweight language model)
+**Current Model**: Gemini (Google's language model family)
 - Fast response time (~2 seconds per question)
 - Optimized for simple, clear explanations
 - Available on Google AI Studio free tier
@@ -183,19 +183,26 @@ python llm/integration_example.py
 The system prompt defines Gemini's behavior:
 
 ```
-- Explain in VERY simple English
-- Use short sentences
-- Be beginner-friendly
-- Explain steps one by one
+- Understand imperfect grammar and short user input
+- Infer intent even from incomplete phrasing
+- Use user-focused language ("you")
+- Give actionable steps users can follow
+- Keep responses concise (5-7 simple sentences)
+- Ask one short clarifying question when intent/type is unclear
 - NEVER approve/reject claims
-- NEVER interpret policy coverage
+- NEVER interpret policy coverage for specific cases
 - Financial content is educational only
 - Always be helpful and supportive
 ```
 
+For the canonical rule set used by runtime logic and docs, see:
+- `CHATBOT_RESPONSE_GUIDELINES.md`
+
 ## Model Information
 
-- **Model**: gemini-1.5-flash
+- **Model**: `gemini-2.5-flash` (default)
+- **Fallbacks**: `gemini-2.0-flash`, `gemini-1.5-flash`
+- **Optional env override**: `GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS`
 - **Provider**: Google Gemini
 - **Cost**: Very affordable (free tier available)
 - **Speed**: Fast responses

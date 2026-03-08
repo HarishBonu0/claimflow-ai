@@ -1,14 +1,20 @@
 """
 ClaimFlow AI - Insurance Claims & Financial Literacy Assistant
-Minimal ChatGPT-Style Interface with Voice Input/Output
+Multilingual Voice-Enabled Interface with Document Understanding
 """
 
 import streamlit as st
 import time
 import logging
 import os
+import sys
 import tempfile
 from datetime import datetime
+
+# Ensure project root is in Python path
+project_root = os.path.dirname(os.path.abspath(__file__))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 # Configure logging
 logging.basicConfig(
@@ -17,10 +23,31 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Load system prompt
+try:
+    with open('system_prompt.md', 'r', encoding='utf-8') as f:
+        SYSTEM_PROMPT = f.read()
+except FileNotFoundError:
+    logger.warning("system_prompt.md not found. Using default prompt.")
+    SYSTEM_PROMPT = """You are ClaimFlow AI, a multilingual insurance assistant. 
+    Respond in the user's language (English, Hindi, Telugu, Tamil, or Kannada).
+    Use simple language, step-by-step explanations, and avoid complex legal terms."""
+
 # Import integration layer and safety modules
 from llm.integration_example import answer_query
 from llm.safety_filter import check_safety
 from llm.intent_classifier import IntentClassifier
+
+# Import language detection (required for multilingual response behavior)
+from utils.language_detector import detect_language, get_language_name, get_tts_language_code
+
+# Import document processing (optional)
+try:
+    from utils.document_processor import process_document, analyze_claim_document, get_document_summary
+    DOCUMENT_PROCESSING_ENABLED = True
+except ImportError:
+    logger.warning("Document processing modules not available. Document features disabled.")
+    DOCUMENT_PROCESSING_ENABLED = False
 
 # Import voice modules
 try:
@@ -31,21 +58,16 @@ except ImportError:
     logger.warning("Voice modules not available. Voice features disabled.")
     VOICE_ENABLED = False
 
-# Language mapping for TTS
+# Supported language mapping (project scope)
 LANGUAGE_CODES = {
     'English': 'en',
     'Hindi': 'hi',
     'Telugu': 'te',
     'Tamil': 'ta',
     'Kannada': 'kn',
-    'Spanish': 'es',
-    'French': 'fr',
-    'German': 'de',
-    'Portuguese': 'pt',
-    'Japanese': 'ja',
-    'Chinese (Simplified)': 'zh-cn',
-    'Chinese (Traditional)': 'zh-tw',
 }
+
+LANGUAGE_NAME_BY_CODE = {code: name for name, code in LANGUAGE_CODES.items()}
 
 # ============================================
 # PAGE CONFIGURATION
@@ -57,558 +79,263 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ============================================
-# CUSTOM CSS - PREMIUM MODERN UI
-# ============================================
-st.markdown("""
-<style>
-    /* ===================================
-       PREMIUM TYPOGRAPHY
-       =================================== */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@400;500;600;700&display=swap');
-    
-    * {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        letter-spacing: -0.01em;
-    }
-    
-    h1, h2, h3 {
-        font-family: 'Poppins', sans-serif;
-        font-weight: 600;
-    }
-    
-    /* ===================================
-       GLOBAL LAYOUT
-       =================================== */
-    .stApp {
-        background: linear-gradient(135deg, #FAF9F7 0%, #F5F3F0 100%);
-    }
-    
-    .main {
-        background: transparent;
-    }
-    
-    /* Hide Streamlit Branding */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    
-    /* Enhanced Padding & Spacing */
-    .block-container {
-        padding: 0 !important;
-        max-width: 100% !important;
-    }
-    
-    /* ===================================
-       PREMIUM TOP BAR / HEADER
-       =================================== */
-    .top-bar {
-        background: linear-gradient(135deg, #047857 0%, #059669 100%);
-        padding: 1.25rem 2rem;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        border-bottom: 3px solid rgba(4, 120, 87, 0.1);
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-        position: sticky;
-        top: 0;
-        z-index: 1000;
-        backdrop-filter: blur(10px);
-    }
-    
-    .app-title {
-        color: #FFFFFF;
-        font-size: 1.5rem;
-        font-weight: 700;
-        font-family: 'Poppins', sans-serif;
-        letter-spacing: -0.02em;
-        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-    }
-    
-    .trust-badge {
-        background: rgba(255, 255, 255, 0.15);
-        backdrop-filter: blur(10px);
-        color: #FFFFFF;
-        padding: 0.5rem 1.25rem;
-        border-radius: 50px;
-        font-size: 0.875rem;
-        font-weight: 500;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    }
-    
-    /* ===================================
-       PREMIUM SIDEBAR
-       =================================== */
-    [data-testid="stSidebar"] {
-        background: #FFFFFF;
-        border-right: 1px solid #E5E7EB;
-        box-shadow: 4px 0 20px rgba(0, 0, 0, 0.06);
-        padding-top: 2rem;
-    }
-    
-    [data-testid="stSidebar"] > div:first-child {
-        background: #FFFFFF;
-        padding: 0 1.5rem;
-    }
-    
-    /* Sidebar Section Cards */
-    [data-testid="stSidebar"] h3 {
-        color: #1F2937;
-        font-size: 0.875rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-bottom: 1rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 2px solid #E5E7EB;
-    }
-    
-    /* Sidebar Standard Buttons */
-    [data-testid="stSidebar"] .stButton > button {
-        background: #F9FAFB;
-        color: #1F2937;
-        border: 1px solid #E5E7EB;
-        border-radius: 12px;
-        padding: 0.875rem 1.25rem;
-        font-size: 0.9375rem;
-        font-weight: 500;
-        width: 100%;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    }
-    
-    [data-testid="stSidebar"] .stButton > button:hover {
-        background: linear-gradient(135deg, #D1FAE5 0%, #A7F3D0 100%);
-        border-color: #047857;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(4, 120, 87, 0.15);
-    }
-    
-    /* Premium "New Chat" Button */
-    .stButton > button[key="new_chat"] {
-        background: linear-gradient(135deg, #047857 0%, #059669 100%) !important;
-        color: white !important;
-        border: none !important;
-        border-radius: 12px !important;
-        padding: 1rem 1.5rem !important;
-        font-size: 1rem !important;
-        font-weight: 600 !important;
-        box-shadow: 0 4px 16px rgba(4, 120, 87, 0.3) !important;
-        transition: all 0.3s ease !important;
-    }
-    
-    .stButton > button[key="new_chat"]:hover {
-        background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
-        transform: translateY(-3px) !important;
-        box-shadow: 0 8px 24px rgba(4, 120, 87, 0.4) !important;
-    }
-    
-    /* ===================================
-       PREMIUM CHAT CONTAINER
-       =================================== */
-    .chat-container {
-        max-width: 900px;
-        margin: 0 auto;
-        padding: 3rem 2rem 8rem 2rem;
-    }
-    
-    /* Chat Messages - Modern Card Style */
-    .stChatMessage {
-        background: transparent;
-        padding: 1.25rem 0;
-        margin-bottom: 0.5rem;
-    }
-    
-    /* Bot Messages - Premium White Cards */
-    [data-testid="stChatMessageContent"] {
-        background: #FFFFFF;
-        border: 1px solid #E5E7EB;
-        border-radius: 16px;
-        padding: 1.5rem 1.75rem;
-        color: #1F2937;
-        font-size: 1rem;
-        line-height: 1.75;
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-        transition: all 0.3s ease;
-    }
-    
-    [data-testid="stChatMessageContent"]:hover {
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-        transform: translateY(-2px);
-    }
-    
-    /* User Messages - Emerald Gradient */
-    [data-testid="stChatMessage"][data-testid*="user"] [data-testid="stChatMessageContent"] {
-        background: linear-gradient(135deg, #D1FAE5 0%, #A7F3D0 100%);
-        color: #1F2937;
-        border: none;
-        box-shadow: 0 2px 12px rgba(4, 120, 87, 0.15);
-    }
-    
-    [data-testid="stChatMessage"][data-testid*="user"] [data-testid="stChatMessageContent"]:hover {
-        box-shadow: 0 4px 20px rgba(4, 120, 87, 0.2);
-    }
-    
-    /* ===================================
-       PREMIUM CHAT INPUT
-       =================================== */
-    .stChatInputContainer {
-        position: fixed;
-        bottom: 0;
-        left: 21rem;
-        right: 0;
-        background: linear-gradient(to top, #FFFFFF 0%, rgba(255, 255, 255, 0.98) 100%);
-        border-top: 1px solid #E5E7EB;
-        padding: 1.5rem 2rem;
-        z-index: 999;
-        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
-        backdrop-filter: blur(10px);
-    }
-    
-    .stChatInputContainer > div {
-        max-width: 900px;
-        margin: 0 auto;
-    }
-    
-    .stChatInput > div {
-        background: #FFFFFF;
-        border: 2px solid #E5E7EB;
-        border-radius: 16px;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-        transition: all 0.3s ease;
-    }
-    
-    .stChatInput > div:focus-within {
-        border-color: #047857;
-        box-shadow: 0 4px 24px rgba(4, 120, 87, 0.2);
-        transform: translateY(-2px);
-    }
-    
-    .stChatInput input {
-        color: #1F2937;
-        font-size: 1rem;
-        padding: 0.875rem 1.25rem;
-    }
-    
-    .stChatInput input::placeholder {
-        color: #9CA3AF;
-        font-weight: 400;
-    }
-    
-    /* ===================================
-       PREMIUM WELCOME / EMPTY STATE
-       =================================== */
-    .empty-state {
-        text-align: center;
-        padding: 5rem 2rem;
-        color: #6B7280;
-        animation: fadeIn 0.6s ease-in;
-    }
-    
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    
-    .empty-state h2 {
-        color: #1F2937;
-        font-size: 2.5rem;
-        font-weight: 700;
-        margin-bottom: 1rem;
-        background: linear-gradient(135deg, #047857 0%, #059669 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-    }
-    
-    .empty-state p {
-        font-size: 1.125rem;
-        margin-bottom: 3rem;
-        color: #6B7280;
-        font-weight: 400;
-    }
-    
-    /* ===================================
-       PREMIUM QUICK ACTION BUTTONS
-       =================================== */
-    .suggestion-btn {
-        background: #FFFFFF;
-        border: 2px solid #E5E7EB;
-        color: #1F2937;
-        padding: 1rem 1.5rem;
-        border-radius: 14px;
-        margin: 0.5rem;
-        cursor: pointer;
-        font-size: 0.9375rem;
-        font-weight: 500;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        display: inline-block;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    }
-    
-    .suggestion-btn:hover {
-        background: linear-gradient(135deg, #047857 0%, #059669 100%);
-        color: #FFFFFF;
-        border-color: transparent;
-        transform: translateY(-4px);
-        box-shadow: 0 8px 24px rgba(4, 120, 87, 0.25);
-    }
-    
-    /* Quick Action Buttons (Streamlit native) */
-    .stButton > button[kind="primary"] {
-        background: #FFFFFF !important;
-        border: 2px solid #E5E7EB !important;
-        color: #1F2937 !important;
-        padding: 1rem 1.5rem !important;
-        border-radius: 14px !important;
-        font-size: 0.9375rem !important;
-        font-weight: 500 !important;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06) !important;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-    }
-    
-    .stButton > button[kind="primary"]:hover {
-        background: linear-gradient(135deg, #047857 0%, #059669 100%) !important;
-        color: #FFFFFF !important;
-        border-color: transparent !important;
-        transform: translateY(-4px) !important;
-        box-shadow: 0 8px 24px rgba(4, 120, 87, 0.25) !important;
-    }
-    
-    /* ===================================
-       PREMIUM WARNING & INFO CARDS
-       =================================== */
-    .warning-card {
-        background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(245, 158, 11, 0.12) 100%);
-        border: 2px solid rgba(245, 158, 11, 0.3);
-        border-radius: 12px;
-        padding: 1.25rem;
-        margin: 1.5rem 0;
-        color: #D97706;
-        font-size: 0.9375rem;
-        box-shadow: 0 2px 8px rgba(245, 158, 11, 0.1);
-    }
-    
-    /* ===================================
-       SIDEBAR TEXT & ELEMENTS
-       =================================== */
-    [data-testid="stSidebar"] p, [data-testid="stSidebar"] span {
-        color: #374151;
-        font-size: 0.9375rem;
-        line-height: 1.6;
-    }
-    
-    [data-testid="stSidebar"] .stCaption {
-        color: #6B7280;
-        font-size: 0.875rem;
-    }
-    
-    /* Voice & Audio Inputs */
-    [data-testid="stSidebar"] .stAudio,
-    [data-testid="stSidebar"] .stSelectbox {
-        margin-bottom: 0.75rem;
-    }
-    
-    /* Selectbox Styling */
-    [data-testid="stSidebar"] .stSelectbox > div > div {
-        background: #F9FAFB;
-        border: 1px solid #E5E7EB;
-        border-radius: 10px;
-        padding: 0.625rem 1rem;
-        font-size: 0.9375rem;
-    }
-    
-    /* ===================================
-       VOICE BUTTON & CONTROLS
-       =================================== */
-    .stChatInput button[data-testid="baseButton-secondary"] {
-        color: #1F2937;
-        border: 1px solid #E5E7EB;
-    }
-    
-    [data-testid="baseButton-secondary"] button {
-        background: #FFFFFF;
-        border: 1px solid #E5E7EB;
-        border-radius: 10px;
-        transition: all 0.3s ease;
-    }
-    
-    [data-testid="baseButton-secondary"] button:hover {
-        background: #D1FAE5;
-        border-color: #047857;
-    }
-    
-    /* ===================================
-       PREMIUM MICROPHONE BUTTON
-       =================================== */
-    [data-testid="stChatInputContainer"] {
-        position: relative;
-    }
-    
-    .input-wrapper {
-        position: relative;
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-    }
-    
-    .input-wrapper > div:first-child {
-        flex: 1;
-    }
-    
-    button[key="voice_record_btn"] {
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        width: 48px !important;
-        height: 48px !important;
-        padding: 0 !important;
-        border-radius: 50% !important;
-        background: linear-gradient(135deg, #FFFFFF 0%, #F9FAFB 100%) !important;
-        border: 2px solid #E5E7EB !important;
-        color: #047857 !important;
-        font-size: 1.375rem !important;
-        cursor: pointer !important;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        flex-shrink: 0 !important;
-        position: relative !important;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
-    }
-    
-    button[key="voice_record_btn"]:hover {
-        color: #FFFFFF !important;
-        background: linear-gradient(135deg, #047857 0%, #059669 100%) !important;
-        border-color: transparent !important;
-        transform: scale(1.1) !important;
-        box-shadow: 0 4px 16px rgba(4, 120, 87, 0.3) !important;
-    }
-    
-    button[key="voice_record_btn"]:active {
-        transform: scale(1.05) !important;
-        box-shadow: 0 2px 12px rgba(4, 120, 87, 0.4) !important;
-    }
-    
-    /* Voice generation & processing buttons */
-    button[key="gen_voice_btn"],
-    button[key="process_voice"],
-    button[key="gen_voice_go"] {
-        min-height: 48px;
-        font-size: 1rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 10px;
-        font-weight: 500;
-    }
-    
-    /* Audio input styling */
-    [data-testid="stAudioInput"] {
-        margin: 1.25rem 0;
-        border-radius: 12px;
-    }
-    
-    /* ===================================
-       PREMIUM TABS STYLING
-       =================================== */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 0.5rem;
-    }
-    
-    .stTabs [data-baseweb="tab-list"] button {
-        background: #F9FAFB;
-        border: 2px solid #E5E7EB;
-        color: #1F2937;
-        font-size: 0.9375rem;
-        font-weight: 500;
-        padding: 0.75rem 1.5rem;
-        border-radius: 10px;
-        transition: all 0.3s ease;
-    }
-    
-    .stTabs [data-baseweb="tab-list"] button:hover {
-        background: #D1FAE5;
-        border-color: #047857;
-    }
-    
-    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-        background: linear-gradient(135deg, #047857 0%, #059669 100%);
-        border: 2px solid transparent;
-        color: #FFFFFF;
-        box-shadow: 0 2px 12px rgba(4, 120, 87, 0.3);
-    }
-    
-    /* ===================================
-       PREMIUM SCROLLBAR
-       =================================== */
-    ::-webkit-scrollbar {
-        width: 10px;height: 10px;
-    }
-    
-    ::-webkit-scrollbar-track {
-        background: #F9FAFB;
-        border-radius: 10px;
-    }
-    
-    ::-webkit-scrollbar-thumb {
-        background: linear-gradient(135deg, #D1D5DB 0%, #9CA3AF 100%);
-        border-radius: 10px;
-        border: 2px solid #F9FAFB;
-        transition: all 0.3s ease;
-    }
-    
-    ::-webkit-scrollbar-thumb:hover {
-        background: linear-gradient(135deg, #047857 0%, #059669 100%);
-    }
-    
-    /* ===================================
-       PREMIUM DIVIDERS
-       =================================== */
-    hr {
-        border: none;
-        height: 1px;
-        background: linear-gradient(90deg, transparent 0%, #E5E7EB 50%, transparent 100%);
-        margin: 2rem 0;
-    }
-    
-    /* ===================================
-       SMOOTH ANIMATIONS
-       =================================== */
-    .stButton > button,
-    [data-testid="stChatMessageContent"],
-    .stChatInput > div {
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    
-    /* Loading Spinner */
-    .stSpinner > div {
-        border-color: #047857 !important;
-    }
-    
-    /* Success/Error/Warning Messages */
-    .stSuccess {
-        background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(4, 120, 87, 0.1) 100%);
-        border-left: 4px solid #10B981;
-        border-radius: 10px;
-        padding: 1rem 1.25rem;
-    }
-    
-    .stError {
-        background: linear-gradient(135deg, rgba(220, 38, 38, 0.1) 0%, rgba(185, 28, 28, 0.1) 100%);
-        border-left: 4px solid #DC2626;
-        border-radius: 10px;
-        padding: 1rem 1.25rem;
-    }
-    
-    .stWarning {
-        background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(217, 119, 6, 0.1) 100%);
-        border-left: 4px solid #F59E0B;
-        border-radius: 10px;
-        padding: 1rem 1.25rem;
-    }
+# UI-only state via query params (does not affect chatbot/session logic)
+sidebar_collapsed = st.query_params.get("sb", "0") == "1"
+collapsed_sidebar_css = """
+    [data-testid=\"stSidebar\"] {{
+        min-width: 4.5rem !important;
+        max-width: 4.5rem !important;
+    }}
 
+    [data-testid=\"stSidebar\"] .stSelectbox,
+    [data-testid=\"stSidebar\"] [data-testid=\"stCaptionContainer\"],
+    [data-testid=\"stSidebar\"] h3 {{
+        display: none;
+    }}
+""" if sidebar_collapsed else ""
+
+# ============================================
+# CUSTOM CSS - SAFE SAAS DASHBOARD LAYOUT
+# ============================================
+st.markdown(
+    f"""
+<style>
+    :root {{
+        --sidebar-width: {'4.5rem' if sidebar_collapsed else '21rem'};
+    }}
+
+    html, body, [data-testid="stAppViewContainer"], .stApp {{
+        background: radial-gradient(circle at top left, #0f172a 0%, #020617 70%);
+        color: #e2e8f0;
+    }}
+
+    .block-container {{
+        max-width: 100%;
+        padding: 1rem 1.2rem 8.5rem 1.2rem;
+    }}
+
+    [data-testid="stSidebar"] {{
+        background: #020617;
+        border-right: 1px solid rgba(148, 163, 184, 0.22);
+    }}
+
+    [data-testid="stSidebar"] .stButton > button,
+    [data-testid="stSidebar"] .stSelectbox > div > div {{
+        background: #0f172a;
+        color: #e2e8f0;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        border-radius: 12px;
+    }}
+
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] span {{
+        color: #cbd5e1 !important;
+    }}
+
+    {collapsed_sidebar_css}
+
+    .chat-shell {{
+        max-width: 980px;
+        margin: 0 auto;
+        background: rgba(15, 23, 42, 0.82);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 18px;
+        padding: 1rem 1rem 1.2rem 1rem;
+        min-height: calc(100vh - 170px);
+        display: flex;
+        flex-direction: column;
+        gap: 0.8rem;
+    }}
+
+    .chat-header {{
+        padding: 0.5rem 0.6rem 1rem 0.6rem;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+        margin-bottom: 1rem;
+    }}
+
+    .chat-title {{
+        font-size: 1.6rem;
+        font-weight: 700;
+        margin: 0;
+        color: #f8fafc;
+    }}
+
+    .chat-subtitle {{
+        margin: 0.2rem 0 0.5rem 0;
+        color: #cbd5e1;
+        font-size: 0.95rem;
+    }}
+
+    .chat-helper {{
+        margin: 0;
+        color: #94a3b8;
+        font-size: 0.9rem;
+    }}
+
+    .prompt-row {{
+        margin-bottom: 0.25rem;
+    }}
+
+    [data-testid="stVerticalBlockBorderWrapper"] {{
+        background: rgba(2, 6, 23, 0.22);
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        border-radius: 14px;
+    }}
+
+    [data-testid="stChatMessage"] {{
+        margin-bottom: 1rem;
+    }}
+
+    [data-testid="stChatMessage"][aria-label*="assistant" i] [data-testid="stChatMessageContent"] {{
+        margin-right: auto;
+        max-width: 70%;
+        background: rgba(30, 41, 59, 0.95);
+        color: #f8fafc;
+        border-radius: 14px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        padding: 0.7rem 0.9rem;
+        line-height: 1.55;
+    }}
+
+    [data-testid="stChatMessage"][aria-label*="assistant" i] [data-testid="stMarkdownContainer"] * {{
+        color: #f8fafc !important;
+    }}
+
+    [data-testid="stChatMessage"][aria-label*="user" i] [data-testid="stChatMessageContent"] {{
+        margin-left: auto;
+        max-width: 70%;
+        background: #e2e8f0;
+        color: #0f172a;
+        border-radius: 14px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        padding: 0.7rem 0.9rem;
+        line-height: 1.55;
+    }}
+
+    [data-testid="stChatMessage"][aria-label*="user" i] [data-testid="stMarkdownContainer"] * {{
+        color: #0f172a !important;
+        font-weight: 600;
+    }}
+
+    .prompt-row .stButton > button {{
+        width: 100%;
+        border-radius: 999px;
+        background: #111827;
+        color: #ffffff;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        font-weight: 600;
+        opacity: 1 !important;
+    }}
+
+    .prompt-row .stButton > button:hover {{
+        border-color: #22d3ee;
+    }}
+
+    button[key^="prompt_"] {{
+        border-radius: 999px !important;
+        background: #111827 !important;
+        color: #ffffff !important;
+        border: 1px solid rgba(148, 163, 184, 0.35) !important;
+        font-weight: 600 !important;
+        opacity: 1 !important;
+    }}
+
+    button[key^="prompt_"]:hover {{
+        border-color: #22d3ee !important;
+        box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.3);
+    }}
+
+    button[kind="secondary"],
+    button[kind="primary"] {{
+        cursor: pointer !important;
+    }}
+
+    [data-testid="stChatInput"] {{
+        position: fixed;
+        left: calc(var(--sidebar-width) + 1rem);
+        right: 4.8rem;
+        bottom: 1rem;
+        z-index: 50;
+        margin: 0 !important;
+        padding: 0 !important;
+    }}
+
+    [data-testid="stChatInput"] > div {{
+        background: #0f172a;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        border-radius: 14px;
+    }}
+
+    [data-testid="stChatInput"] input {{
+        color: #e2e8f0;
+    }}
+
+    [data-testid="stChatInput"] input::placeholder {{
+        color: #94a3b8;
+    }}
+
+    button[key="voice_record_btn"],
+    button[key="doc_upload_btn"] {{
+        position: fixed;
+        bottom: 1rem;
+        z-index: 60;
+        border-radius: 999px !important;
+        height: 44px;
+        width: 44px;
+        border: 1px solid rgba(148, 163, 184, 0.35) !important;
+        background: #0f172a !important;
+        color: #e2e8f0 !important;
+    }}
+
+    button[key="voice_record_btn"] {{
+        right: 1rem;
+    }}
+
+    button[key="doc_upload_btn"] {{
+        right: 4.2rem;
+    }}
+
+    button[key="voice_record_btn"]:hover,
+    button[key="doc_upload_btn"]:hover {{
+        border-color: #22d3ee !important;
+    }}
+
+    [data-testid="stChatMessageContent"] {{
+        font-size: 1rem;
+    }}
+
+    @media (max-width: 1024px) {{
+        button[key="doc_upload_btn"] {{
+            right: 4rem;
+        }}
+
+        button[key="voice_record_btn"] {{
+            right: 0.8rem;
+        }}
+    }}
+
+    @media (max-width: 640px) {{
+        [data-testid="stChatInput"] {{
+            right: 6.8rem;
+        }}
+    }}
+
+    @media (max-width: 1024px) {{
+        [data-testid="stChatInput"] {{
+            left: 0.8rem;
+            right: 4.8rem;
+        }}
+
+        .chat-shell {{
+            min-height: calc(100vh - 150px);
+        }}
+    }}
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # ============================================
 # SESSION STATE INITIALIZATION
@@ -637,6 +364,25 @@ if "show_voice_recorder" not in st.session_state:
 if "show_voice_gen" not in st.session_state:
     st.session_state.show_voice_gen = False
 
+# Document processing state
+if "uploaded_document" not in st.session_state:
+    st.session_state.uploaded_document = None
+
+if "document_text" not in st.session_state:
+    st.session_state.document_text = ""
+
+if "document_chunks" not in st.session_state:
+    st.session_state.document_chunks = []
+
+if "document_analysis" not in st.session_state:
+    st.session_state.document_analysis = None
+
+if "show_document_upload" not in st.session_state:
+    st.session_state.show_document_upload = False
+
+if "last_detected_language" not in st.session_state:
+    st.session_state.last_detected_language = 'English'
+
 # ============================================
 # VOICE PROCESSING FUNCTIONS
 # ============================================
@@ -644,40 +390,58 @@ if "show_voice_gen" not in st.session_state:
 def process_voice_input(audio_file, language_code):
     """
     Process voice input: convert to text and generate response.
+    Supports multilingual speech recognition.
     
     Args:
         audio_file: Path to audio file
-        language_code: Language code for TTS output
+        language_code: Language code for STT input AND TTS output (e.g., 'en', 'hi', 'te')
     
     Returns:
         Dictionary with user_text, response_text, and audio_file
     """
     try:
         logger.info("Starting voice input processing...")
+        logger.info(f"Voice language: {language_code}")
         
-        # Step 1: Speech to Text (Whisper auto-detects language)
-        logger.info("Converting speech to text...")
-        user_text = speech_to_text(audio_file)
+        # Step 1: Speech to text with retry (retry once)
+        language_name = LANGUAGE_NAME_BY_CODE.get(language_code, 'English')
+        
+        logger.info(f"Converting speech to text ({language_name})...")
+        
+        # Try speech-to-text with retry logic
+        try:
+            from voice.stt import speech_to_text_with_retry
+            user_text = speech_to_text_with_retry(audio_file, language=language_name, max_retries=1)
+        except ImportError:
+            # Fallback to simple speech_to_text without retry
+            user_text = speech_to_text(audio_file, language=language_name, auto_detect=False)
         
         if user_text.startswith("Error:"):
             logger.error(f"STT failed: {user_text}")
             return {
                 'user_text': '',
-                'response_text': 'Sorry, I could not understand your speech. Please try again.',
+                'response_text': 'Sorry, I could not understand your speech after retrying. Please try again.',
                 'audio_file': None,
                 'success': False
             }
         
-        logger.info(f"Transcribed text: {user_text[:50]}...")
+        logger.info(f"Transcribed text: {user_text[:100]}...")
         
-        # Step 2: Generate response (using text pipeline)
-        response_text = generate_response(user_text)
+        # Keep language consistent with the user's spoken query.
+        detected_lang, _ = detect_language(user_text)
+        detected_lang = get_tts_language_code(detected_lang)
+        st.session_state.selected_language = LANGUAGE_NAME_BY_CODE.get(detected_lang, 'English')
+        st.session_state.last_detected_language = st.session_state.selected_language
+
+        # Step 2: Generate response (using text pipeline with document context if available)
+        doc_context = st.session_state.document_text if hasattr(st.session_state, 'document_text') else None
+        response_text = generate_response(user_text, document_context=doc_context)
         logger.info(f"Generated response: {len(response_text)} characters")
         
         # Step 3: Text to Speech (using selected language)
-        logger.info(f"Converting response to speech ({language_code})...")
+        logger.info(f"Converting response to speech ({st.session_state.selected_language})...")
         audio_file_output = f"temp_response_{int(time.time())}.mp3"
-        audio_path = text_to_speech(response_text, audio_file_output, language=language_code)
+        audio_path = text_to_speech(response_text, audio_file_output, language=detected_lang)
         
         if not audio_path:
             logger.warning("TTS conversion failed")
@@ -701,19 +465,145 @@ def process_voice_input(audio_file, language_code):
         logger.error(f"Voice processing error: {str(e)}", exc_info=True)
         return {
             'user_text': '',
-            'response_text': f'Error processing voice: {str(e)[:100]}',
+            'response_text': 'Voice processing failed. Please try again.',
             'audio_file': None,
             'success': False
         }
+
+def process_document_upload(uploaded_file, ocr_language='eng'):
+    """
+    Process uploaded document (PDF or image) and extract text.
+    
+    Args:
+        uploaded_file: Streamlit uploaded file object
+        ocr_language: OCR language code (eng, hin, tel, tam, kan)
+    
+    Returns:
+        Dictionary with extracted text and analysis
+    """
+    try:
+        logger.info(f"Processing uploaded document: {uploaded_file.name}")
+        
+        # Save to temp file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
+            tmp_file.write(uploaded_file.getbuffer())
+            temp_file_path = tmp_file.name
+        
+        # Determine file type
+        file_extension = os.path.splitext(uploaded_file.name)[1].lower()
+        
+        if file_extension == '.pdf':
+            file_type = 'pdf'
+        elif file_extension in ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']:
+            file_type = 'image'
+        else:
+            return {
+                'success': False,
+                'error': f'Unsupported file type: {file_extension}',
+                'text': '',
+                'analysis': None
+            }
+        
+        # Extract text
+        result = process_document(temp_file_path, file_type, ocr_lang=ocr_language)
+        
+        # Clean up temp file
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+        
+        if not result['success']:
+            return {
+                'success': False,
+                'error': result.get('error', 'Unknown error'),
+                'text': '',
+                'analysis': None
+            }
+        
+        # Analyze document for claim information
+        document_text = result['text']
+        analysis = analyze_claim_document(document_text)
+        
+        logger.info(f"Document processed successfully: {len(document_text)} characters")
+        
+        return {
+            'success': True,
+            'text': document_text,
+            'analysis': analysis,
+            'file_name': uploaded_file.name,
+            'file_type': file_type,
+            'char_count': result.get('char_count', len(document_text))
+        }
+    
+    except Exception as e:
+        logger.error(f"Document processing error: {str(e)}", exc_info=True)
+        return {
+            'success': False,
+            'error': f'Error processing document: {str(e)[:100]}',
+            'text': '',
+            'analysis': None
+        }
+
+
+def chunk_document_text(text, chunk_size=900, overlap=150):
+    """Split uploaded document text into reusable chunks for retrieval."""
+    if not text:
+        return []
+
+    chunks = []
+    start = 0
+    text_len = len(text)
+    while start < text_len:
+        end = min(start + chunk_size, text_len)
+        chunk = text[start:end].strip()
+        if chunk:
+            chunks.append(chunk)
+        if end >= text_len:
+            break
+        start = max(0, end - overlap)
+    return chunks
+
+
+def retrieve_document_chunks(query, document_chunks, k=3):
+    """Return top-k relevant chunks from uploaded documents using token overlap scoring."""
+    if not query or not document_chunks:
+        return []
+
+    query_terms = {token.lower() for token in query.split() if len(token.strip()) > 2}
+    if not query_terms:
+        return document_chunks[:k]
+
+    scored = []
+    for chunk in document_chunks:
+        chunk_terms = {token.lower() for token in chunk.split()}
+        overlap = len(query_terms.intersection(chunk_terms))
+        if overlap > 0:
+            scored.append((overlap, chunk))
+
+    if not scored:
+        return document_chunks[:k]
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [chunk for _, chunk in scored[:k]]
 
 # ============================================
 # HELPER FUNCTIONS
 # ============================================
 
-def generate_response(user_input):
-    """Generate AI response with safety checks and intent classification"""
+def generate_response(user_input, document_context=None):
+    """
+    Generate AI response with safety checks, language detection, and intent classification.
+    Optionally includes document context for document-aware responses.
+    """
     try:
         logger.info(f"Processing query: {user_input[:50]}...")
+        
+        # Detect user's language and keep UI voice language aligned.
+        detected_lang, confidence = detect_language(user_input)
+        detected_lang = get_tts_language_code(detected_lang)
+        lang_name = get_language_name(detected_lang)
+        st.session_state.selected_language = LANGUAGE_NAME_BY_CODE.get(detected_lang, 'English')
+        st.session_state.last_detected_language = st.session_state.selected_language
+        logger.info(f"Detected language: {lang_name} ({detected_lang}, confidence: {confidence:.2f})")
         
         # Step 1: Intent classification
         intent, confidence = IntentClassifier.classify(user_input)
@@ -725,9 +615,45 @@ def generate_response(user_input):
             logger.warning(f"Query blocked by safety filter: {intent}")
             return rejection_message
         
-        # Step 3: Use proper integration layer (RAG + LLM)
-        response = answer_query(user_input, context_k=3, verbose=False)
-        logger.info(f"Response generated: {len(response)} characters")
+        # Step 3: Prepare enhanced query with system prompt and language context
+        language_instruction = f"""
+    IMPORTANT: The user is asking in {lang_name}.
+    You must respond in {lang_name} only.
+    Use very simple wording suitable for voice playback and low-literacy users.
+    For procedures, always provide short step-by-step instructions.
+    Do not mention internal system behavior."""
+        
+        document_instruction = ""
+        if document_context:
+            chunks = st.session_state.get('document_chunks', [])
+            top_chunks = retrieve_document_chunks(user_input, chunks, k=3) if chunks else [document_context[:1000]]
+            selected_context = "\n\n".join(top_chunks)
+            logger.info(f"Adding retrieved document context ({len(selected_context)} chars)")
+            document_instruction = f"""
+
+DOCUMENT CONTEXT:
+The user has uploaded an insurance-related document.
+Use only the retrieved snippets below when citing document details.
+
+---DOCUMENT START---
+{selected_context[:3000]}
+---DOCUMENT END---
+
+When answering, reference specific information from the document snippets."""
+        
+        enhanced_query = f"""{SYSTEM_PROMPT}
+
+---
+
+{language_instruction}{document_instruction}
+
+---
+
+USER QUESTION: {user_input}"""
+        
+        # Step 4: Use proper integration layer (RAG + LLM)
+        response = answer_query(enhanced_query, context_k=3, verbose=False)
+        logger.info(f"Response generated: {len(response)} characters in {lang_name}")
         
         return response
     
@@ -748,39 +674,45 @@ Please try again in a moment, or rephrase your question.
 """
 
 # ============================================
-# TOP BAR
-# ============================================
-st.markdown("""
-<div class='top-bar'>
-    <div class='app-title'>ClaimFlow AI</div>
-    <div class='trust-badge'>Educational Only</div>
-</div>
-""", unsafe_allow_html=True)
-
-# ============================================
 # SIDEBAR
 # ============================================
 with st.sidebar:
-    # ============================================
-    # LANGUAGE SELECTION (for voice output)
-    # ============================================
-    if VOICE_ENABLED:
-        st.markdown("<h3 style='color: #f1f5f9; font-size: 1rem; margin-bottom: 1rem;'>🌍 Language Settings</h3>", unsafe_allow_html=True)
-        
-        selected_lang = st.selectbox(
-            "Voice Response Language",
-            list(LANGUAGE_CODES.keys()),
-            index=list(LANGUAGE_CODES.keys()).index(st.session_state.selected_language),
-            key="language_select"
-        )
-        st.session_state.selected_language = selected_lang
-        st.caption(f"Responses will be in {selected_lang}")
-        st.markdown("<div style='height: 1.5rem;'></div>", unsafe_allow_html=True)
+    # Sidebar collapse toggle using query params to avoid backend/session impact.
+    if st.button("➡️" if sidebar_collapsed else "⬅️", key="sidebar_toggle", use_container_width=True):
+        st.query_params["sb"] = "0" if sidebar_collapsed else "1"
+        st.rerun()
+
+    if not sidebar_collapsed:
+        st.markdown("### Language")
+        st.caption(f"Auto-detected: {st.session_state.last_detected_language}")
+        st.caption("Responses stay in the same language as your query.")
+        st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
     
-    st.markdown("<h3 style='color: #f1f5f9; font-size: 1rem; margin-bottom: 1rem;'>💬 Chat History</h3>", unsafe_allow_html=True)
+    # Language support info
+    if not sidebar_collapsed:
+        with st.expander("🌍 Supported Languages", expanded=False):
+            st.markdown("""
+            **ClaimFlow AI supports:**
+            
+            🇮🇳 **Indian Languages**
+            - 🔤 हिंदी (Hindi)
+            - 🔤 తెలుగు (Telugu)
+            - 🔤 தமிழ் (Tamil)
+            - 🔤 ಕನ್ನಡ (Kannada)
+            
+            - 🇬🇧 English
+            
+            **Auto-detects your language**
+            Speak or type in English, Hindi, Telugu, Tamil, or Kannada.
+            """)
+    
+    st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
+
+    if not sidebar_collapsed:
+        st.markdown("### Chat History")
     
     # New Chat Button
-    if st.button("➕ New Chat", key="new_chat", use_container_width=True):
+    if st.button("➕" if sidebar_collapsed else "➕ New Chat", key="new_chat", use_container_width=True):
         if st.session_state.messages:
             # Save current chat
             user_messages = [msg for msg in st.session_state.messages if msg["role"] == "user"]
@@ -801,14 +733,15 @@ with st.sidebar:
         st.session_state.current_chat_id = None
         st.rerun()
     
-    st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height: 0.5rem;'></div>", unsafe_allow_html=True)
     
     # Chat History List
     if st.session_state.chat_history:
-        for chat in st.session_state.chat_history:
+        for idx, chat in enumerate(st.session_state.chat_history):
             col1, col2 = st.columns([4, 1])
             with col1:
-                if st.button(chat["title"], key=f"chat_{chat['id']}", use_container_width=True):
+                chat_label = f"💬 {idx + 1}" if sidebar_collapsed else chat["title"]
+                if st.button(chat_label, key=f"chat_{chat['id']}", use_container_width=True):
                     st.session_state.messages = chat["messages"].copy()
                     st.session_state.current_chat_id = chat["id"]
                     st.rerun()
@@ -820,81 +753,83 @@ with st.sidebar:
                         st.session_state.current_chat_id = None
                     st.rerun()
     else:
-        st.markdown("<p style='color: #64748b; text-align: center; padding: 2rem 1rem; font-size: 0.85rem;'>No previous chats</p>", unsafe_allow_html=True)
+        if not sidebar_collapsed:
+            st.markdown("<p style='color: #64748b; text-align: center; padding: 1.4rem 1rem; font-size: 0.85rem;'>No previous chats</p>", unsafe_allow_html=True)
     
     st.markdown("<div style='height: 2rem;'></div>", unsafe_allow_html=True)
     
     # Clear All Button
     if st.session_state.chat_history:
-        if st.button("🗑️ Clear All Chats", use_container_width=True):
+        if st.button("🧹" if sidebar_collapsed else "🗑️ Clear All Chats", use_container_width=True):
             st.session_state.chat_history = []
             st.session_state.messages = []
             st.session_state.current_chat_id = None
             st.rerun()
-    
-    st.markdown("<div style='margin-top: auto; padding-top: 2rem;'>", unsafe_allow_html=True)
-    st.markdown("<p style='color: #475569; font-size: 0.75rem;'>Version 1.0.0</p>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+
+    if not sidebar_collapsed:
+        st.markdown("<div style='margin-top: auto; padding-top: 1.5rem;'>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #475569; font-size: 0.75rem;'>Version 1.0.0</p>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 # ============================================
 # MAIN CHAT AREA
 # ============================================
-st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
-
-# Empty State
-if not st.session_state.messages:
-    st.markdown("""
-    <div class='empty-state'>
-        <h2>ClaimFlow AI</h2>
-        <p>Ask about insurance claims or savings growth.</p>
+st.markdown("""
+<div class='chat-shell'>
+    <div class='chat-header'>
+        <h1 class='chat-title'>ClaimFlow AI</h1>
+        <p class='chat-subtitle'>🌍 Multilingual Insurance Assistant</p>
+        <p class='chat-helper'>Ask in English, Hindi, Telugu, Tamil, or Kannada • Upload documents • Get instant help</p>
     </div>
-    """, unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("📋 Explain claim stages", use_container_width=True):
-            st.session_state.messages.append({"role": "user", "content": "Explain claim stages"})
-            st.rerun()
-    with col2:
-        if st.button("⏱️ Why is my claim delayed?", use_container_width=True):
-            st.session_state.messages.append({"role": "user", "content": "Why is my claim delayed?"})
-            st.rerun()
-    with col3:
-        if st.button("📄 What documents are required?", use_container_width=True):
-            st.session_state.messages.append({"role": "user", "content": "What documents are required?"})
-            st.rerun()
-    
-    st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns(3)
-    with col2:
-        if st.button("💰 Show savings growth example", use_container_width=True):
-            st.session_state.messages.append({"role": "user", "content": "Show savings growth example"})
-            st.rerun()
+""", unsafe_allow_html=True)
 
-# Display Chat Messages
-for i, message in enumerate(st.session_state.messages):
-    with st.chat_message(message["role"], avatar="👤" if message["role"] == "user" else "🛡️"):
-        st.markdown(message["content"])
-        
-        # Add audio playback button for assistant messages with voice responses
-        if message["role"] == "assistant" and st.session_state.last_voice_response_audio:
-            if st.session_state.messages[i] is message:  # Last assistant message
-                st.markdown("<div style='height: 0.5rem;'></div>", unsafe_allow_html=True)
-                
-                col1, col2 = st.columns([1, 4])
-                with col1:
-                    if st.button("🔊 Play", key=f"play_audio_{i}"):
-                        try:
-                            with open(st.session_state.last_voice_response_audio, 'rb') as audio_file:
-                                st.audio(audio_file.read(), format='audio/mp3')
-                        except Exception as e:
-                            st.error(f"Could not play audio: {str(e)}")
-                
-                with col2:
-                    st.markdown("<p style='color: #94a3b8; font-size: 0.85rem; margin-top: 0.5rem;'>Listen to response</p>", unsafe_allow_html=True)
+# Suggested Prompts
+st.markdown("<div class='prompt-row'>", unsafe_allow_html=True)
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("📋 Claim Process Steps", key="prompt_claim_stages", use_container_width=True):
+        st.session_state.messages.append({"role": "user", "content": "Explain claim stages in simple steps"})
+        st.rerun()
+with col2:
+    if st.button("⏳ Claim Delay Reasons", key="prompt_claim_delay", use_container_width=True):
+        st.session_state.messages.append({"role": "user", "content": "Why is my claim delayed"})
+        st.rerun()
 
+col3, col4 = st.columns(2)
+with col3:
+    if st.button("📄 Required Documents", key="prompt_required_docs", use_container_width=True):
+        st.session_state.messages.append({"role": "user", "content": "What documents are needed for filing a claim"})
+        st.rerun()
+
+with col4:
+    if st.button("🎯 Ask in Your Language", key="prompt_lang_help", use_container_width=True):
+        st.session_state.messages.append({"role": "user", "content": "Can you help me in my local language?"})
+        st.rerun()
 st.markdown("</div>", unsafe_allow_html=True)
+
+# Display Chat Messages in scrollable container
+messages_container = st.container(height=540, border=False)
+with messages_container:
+    for i, message in enumerate(st.session_state.messages):
+        with st.chat_message(message["role"], avatar="👤" if message["role"] == "user" else "🛡️"):
+            st.markdown(message["content"])
+
+            # Add audio playback button for assistant messages with voice responses
+            if message["role"] == "assistant" and st.session_state.last_voice_response_audio:
+                if st.session_state.messages[i] is message:  # Last assistant message
+                    st.markdown("<div style='height: 0.5rem;'></div>", unsafe_allow_html=True)
+
+                    col1, col2 = st.columns([1, 4])
+                    with col1:
+                        if st.button("🔊 Play", key=f"play_audio_{i}"):
+                            try:
+                                with open(st.session_state.last_voice_response_audio, 'rb') as audio_file:
+                                    st.audio(audio_file.read(), format='audio/mp3')
+                            except Exception as e:
+                                st.error(f"Could not play audio: {str(e)}")
+
+                    with col2:
+                        st.markdown("<p style='color: #94a3b8; font-size: 0.85rem; margin-top: 0.5rem;'>Listen to response</p>", unsafe_allow_html=True)
 
 # ============================================
 # AUDIO PLAYBACK SECTION (for latest voice response)
@@ -907,7 +842,7 @@ if st.session_state.last_voice_response_audio and os.path.exists(st.session_stat
         with open(st.session_state.last_voice_response_audio, 'rb') as audio_file:
             audio_data = audio_file.read()
             st.audio(audio_data, format='audio/mp3', use_column_width=True)
-            st.markdown(f"<p style='color: #94a3b8; font-size: 0.75rem;'>Language: {st.session_state.selected_language}</p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='color: #64748b; font-size: 0.75rem;'>Language: {st.session_state.selected_language}</p>", unsafe_allow_html=True)
     except Exception as e:
         logger.error(f"Error playing audio: {str(e)}")
         st.warning(f"Could not load voice response: {str(e)}")
@@ -915,22 +850,46 @@ if st.session_state.last_voice_response_audio and os.path.exists(st.session_stat
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ============================================
-# CHAT INPUT with VOICE
+# CHAT INPUT with VOICE & DOCUMENTS
 # ============================================
 
 # Create a container for input controls
 input_container = st.container()
 
 with input_container:
-    col1, col2 = st.columns([1, 0.08], gap="small")
+    # Adjust columns based on enabled features
+    if VOICE_ENABLED and DOCUMENT_PROCESSING_ENABLED:
+        col1, col2, col3 = st.columns([1, 0.08, 0.08], gap="small")
+    elif VOICE_ENABLED or DOCUMENT_PROCESSING_ENABLED:
+        col1, col2 = st.columns([1, 0.08], gap="small")
+    else:
+        col1 = st.container()
+        col2 = None
+        col3 = None
     
     with col1:
-        prompt = st.chat_input("Ask about insurance claims or savings growth...")
+        prompt = st.chat_input("Ask about insurance claims or upload documents...")
     
-    with col2:
-        if VOICE_ENABLED:
+    if VOICE_ENABLED and DOCUMENT_PROCESSING_ENABLED:
+        with col2:
             if st.button("🎙️", help="Record voice", key="voice_record_btn", use_container_width=False):
                 st.session_state.show_voice_recorder = True
+                st.session_state.show_document_upload = False
+        
+        with col3:
+            if st.button("📄", help="Upload document", key="doc_upload_btn", use_container_width=False):
+                st.session_state.show_document_upload = True
+                st.session_state.show_voice_recorder = False
+    
+    elif VOICE_ENABLED:
+        with col2:
+            if st.button("🎙️", help="Record voice", key="voice_record_btn", use_container_width=False):
+                st.session_state.show_voice_recorder = True
+    
+    elif DOCUMENT_PROCESSING_ENABLED:
+        with col2:
+            if st.button("📄", help="Upload document", key="doc_upload_btn", use_container_width=False):
+                st.session_state.show_document_upload = True
 
 # Voice recorder section (hidden by default)
 if VOICE_ENABLED and st.session_state.get("show_voice_recorder", False):
@@ -1009,9 +968,108 @@ if VOICE_ENABLED and st.session_state.get("show_voice_gen", False):
                     logger.error(f"Voice generation error: {str(e)}")
                     st.error(f"Error: {str(e)[:100]}")
 
+# Document upload section (hidden by default)
+if DOCUMENT_PROCESSING_ENABLED and st.session_state.get("show_document_upload", False):
+    st.divider()
+    st.markdown("#### 📄 Upload Document")
+    st.caption("Upload claim documents, bills, medical records, or insurance policies (PDF or images)")
+    
+    col1, col2 = st.columns([4, 1])
+    
+    with col1:
+        uploaded_file = st.file_uploader(
+            "Drop file here",
+            type=['pdf', 'jpg', 'jpeg', 'png', 'bmp', 'tiff'],
+            key="document_uploader",
+            label_visibility="collapsed"
+        )
+    
+    with col2:
+        if st.button("✓ Process", key="process_document"):
+            if uploaded_file:
+                with st.spinner("🔄 Extracting text from document..."):
+                    # Determine OCR language based on selected language
+                    ocr_lang_map = {
+                        'English': 'eng',
+                        'Hindi': 'hin',
+                        'Telugu': 'tel',
+                        'Tamil': 'tam',
+                        'Kannada': 'kan',
+                    }
+                    ocr_lang = ocr_lang_map.get(st.session_state.selected_language, 'eng')
+                    
+                    result = process_document_upload(uploaded_file, ocr_language=ocr_lang)
+                
+                if result['success']:
+                    # Store document text
+                    st.session_state.document_text = result['text']
+                    st.session_state.document_chunks = chunk_document_text(result['text'])
+                    st.session_state.document_analysis = result['analysis']
+                    st.session_state.uploaded_document = result['file_name']
+                    
+                    # Show summary
+                    st.success(f"✅ Document processed: {result['file_name']}")
+                    st.info(f"📊 Extracted {result['char_count']:,} characters")
+                    
+                    # Display document analysis
+                    analysis = result['analysis']
+                    if analysis:
+                        with st.expander("📋 Document Analysis", expanded=True):
+                            st.write(f"**Type:** {analysis['document_type'].replace('_', ' ').title()}")
+                            
+                            if analysis.get('detected_amounts'):
+                                st.write(f"**Amounts:** {', '.join(analysis['detected_amounts'])}")
+                            
+                            if analysis.get('detected_dates'):
+                                st.write(f"**Dates:** {', '.join(analysis['detected_dates'])}")
+                            
+                            if analysis.get('missing_info'):
+                                st.warning(f"⚠️ **Potentially Missing:** {', '.join(analysis['missing_info'])}")
+                    
+                    # Add to messages
+                    summary = get_document_summary(result['text'], max_chars=300)
+                    st.session_state.messages.append({
+                        "role": "user",
+                        "content": f"📄 **Uploaded document:** {result['file_name']}\n\n**Summary:**\n{summary}"
+                    })
+                    
+                    # Generate automatic analysis
+                    auto_prompt = f"Analyze this {analysis['document_type'].replace('_', ' ')} and provide insights on completeness and next steps."
+                    response = generate_response(auto_prompt, document_context=result['text'])
+                    st.session_state.messages.append({"role": "assistant", "content": response})
+                    
+                    st.session_state.show_document_upload = False
+                    st.rerun()
+                else:
+                    st.error(f"❌ {result['error']}")
+            else:
+                st.warning("Please upload a file first")
+    
+    # Show current document if any
+    if st.session_state.document_text:
+        st.markdown("---")
+        st.markdown(f"**Currently loaded:** {st.session_state.get('uploaded_document', 'Document')}")
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("📖 View Full Text", key="view_doc_text"):
+                with st.expander("Document Text", expanded=True):
+                    st.text_area("", st.session_state.document_text, height=300, label_visibility="collapsed")
+        with col_b:
+            if st.button("🗑️ Clear Document", key="clear_doc"):
+                st.session_state.document_text = ""
+                st.session_state.document_chunks = []
+                st.session_state.document_analysis = None
+                st.session_state.uploaded_document = None
+                st.success("Document cleared")
+                st.rerun()
+
 # Process text prompt if provided
 if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
-    response = generate_response(prompt)
+    
+    # Use document context if available
+    doc_context = st.session_state.document_text if st.session_state.document_text else None
+    response = generate_response(prompt, document_context=doc_context)
+    
     st.session_state.messages.append({"role": "assistant", "content": response})
     st.rerun()
