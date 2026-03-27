@@ -6,6 +6,7 @@ Handles PDF and image text extraction with OCR support.
 import os
 import logging
 from typing import Optional, Dict, Any
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -152,46 +153,127 @@ def analyze_claim_document(document_text: str) -> Dict[str, Any]:
     """
     analysis = {
         'document_type': 'unknown',
+        'document_type_confidence': 0.0,
         'key_fields': [],
         'missing_info': [],
         'detected_dates': [],
         'detected_amounts': [],
+        'extracted_fields': {},
+        'verification_score': 0.0,
+        'verification_status': 'low_confidence',
     }
-    
-    # Basic keyword detection
-    text_lower = document_text.lower()
-    
-    # Detect document type
-    if any(word in text_lower for word in ['claim form', 'claim number', 'claimant']):
-        analysis['document_type'] = 'claim_form'
-    elif any(word in text_lower for word in ['policy', 'premium', 'coverage']):
-        analysis['document_type'] = 'insurance_policy'
-    elif any(word in text_lower for word in ['medical', 'prescription', 'diagnosis']):
-        analysis['document_type'] = 'medical_document'
-    elif any(word in text_lower for word in ['invoice', 'bill', 'receipt']):
-        analysis['document_type'] = 'bill_invoice'
-    
-    # Detect potential missing fields
-    required_fields = {
-        'policy number': ['policy number', 'policy no', 'policy#'],
-        'claim number': ['claim number', 'claim no', 'claim id'],
-        'claimant name': ['name', 'claimant', 'insured'],
-        'date': ['date', 'dated'],
+
+    text = document_text or ''
+    text_lower = text.lower()
+
+    # Detect document type with lightweight scoring.
+    type_hints = {
+        'claim_form': ['claim form', 'claim number', 'claimant', 'incident date', 'loss date'],
+        'insurance_policy': ['policy', 'premium', 'coverage', 'sum insured', 'policy term'],
+        'medical_document': ['medical', 'prescription', 'diagnosis', 'hospital', 'doctor'],
+        'bill_invoice': ['invoice', 'bill', 'receipt', 'amount due', 'total amount'],
     }
-    
-    for field_name, keywords in required_fields.items():
-        if not any(kw in text_lower for kw in keywords):
+    type_scores = {}
+    for doc_type, hints in type_hints.items():
+        score = sum(1 for hint in hints if hint in text_lower)
+        type_scores[doc_type] = score
+
+    best_type = max(type_scores, key=type_scores.get)
+    best_score = type_scores[best_type]
+    if best_score > 0:
+        analysis['document_type'] = best_type
+        analysis['document_type_confidence'] = min(1.0, best_score / 4.0)
+
+    def _extract_with_patterns(patterns: list[str]) -> str:
+        for pattern in patterns:
+            match = re.search(pattern, text, flags=re.IGNORECASE)
+            if match:
+                value = match.group(1).strip()
+                if value:
+                    return value
+        return ''
+
+    # Structured extraction schema with simple confidence heuristics.
+    extracted_fields = {
+        'policy_number': _extract_with_patterns([
+            r'policy\s*(?:number|no\.?|#)\s*[:\-]?\s*([A-Z0-9\-/]{5,})',
+        ]),
+        'claim_number': _extract_with_patterns([
+            r'claim\s*(?:number|no\.?|id|#)\s*[:\-]?\s*([A-Z0-9\-/]{4,})',
+        ]),
+        'claimant_name': _extract_with_patterns([
+            r'(?:claimant|insured|name)\s*[:\-]\s*([A-Za-z .]{3,60})',
+        ]),
+        'email': _extract_with_patterns([
+            r'([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})',
+        ]),
+        'phone': _extract_with_patterns([
+            r'(?:\+?91[-\s]?)?([6-9]\d{9})',
+        ]),
+    }
+
+    amounts = re.findall(r'₹\s*[\d,]+(?:\.\d{2})?|\$\s*[\d,]+(?:\.\d{2})?', text)
+    dates = re.findall(r'\d{1,2}[/-]\d{1,2}[/-]\d{2,4}', text)
+
+    extracted_fields['invoice_total'] = amounts[0] if amounts else ''
+    extracted_fields['incident_date'] = dates[0] if dates else ''
+
+    analysis['detected_amounts'] = amounts[:5]
+    analysis['detected_dates'] = dates[:5]
+
+    # Add confidence metadata per extracted field.
+    field_confidence = {}
+    for field_name, value in extracted_fields.items():
+        confidence = 0.0
+        if value:
+            if field_name in {'policy_number', 'claim_number'}:
+                confidence = 0.9
+            elif field_name in {'email', 'phone'}:
+                confidence = 0.95
+            elif field_name in {'invoice_total', 'incident_date'}:
+                confidence = 0.85
+            else:
+                confidence = 0.75
+        field_confidence[field_name] = round(confidence, 2)
+
+    analysis['extracted_fields'] = {
+        key: {
+            'value': extracted_fields[key],
+            'confidence': field_confidence[key],
+        }
+        for key in extracted_fields
+    }
+
+    # Build key fields and missing info lists to preserve compatibility.
+    for field_name, metadata in analysis['extracted_fields'].items():
+        if metadata['value']:
+            analysis['key_fields'].append(field_name)
+
+    required_by_type = {
+        'claim_form': ['policy_number', 'claim_number', 'claimant_name', 'incident_date'],
+        'insurance_policy': ['policy_number', 'claimant_name'],
+        'medical_document': ['claimant_name', 'incident_date'],
+        'bill_invoice': ['invoice_total', 'incident_date'],
+        'unknown': ['policy_number', 'claim_number', 'claimant_name', 'incident_date'],
+    }
+    required_fields = required_by_type.get(analysis['document_type'], required_by_type['unknown'])
+    for field_name in required_fields:
+        if not analysis['extracted_fields'][field_name]['value']:
             analysis['missing_info'].append(field_name)
-    
-    # Simple amount detection (basic regex)
-    import re
-    amounts = re.findall(r'₹\s*[\d,]+(?:\.\d{2})?|\$\s*[\d,]+(?:\.\d{2})?', document_text)
-    analysis['detected_amounts'] = amounts[:5]  # Limit to 5
-    
-    # Simple date detection
-    dates = re.findall(r'\d{1,2}[/-]\d{1,2}[/-]\d{2,4}', document_text)
-    analysis['detected_dates'] = dates[:5]  # Limit to 5
-    
+
+    # Verification score combines type confidence + required-field confidence.
+    required_conf_sum = sum(analysis['extracted_fields'][name]['confidence'] for name in required_fields)
+    required_conf_avg = required_conf_sum / max(1, len(required_fields))
+    verification_score = (0.35 * analysis['document_type_confidence']) + (0.65 * required_conf_avg)
+    analysis['verification_score'] = round(verification_score * 100, 1)
+
+    if analysis['verification_score'] >= 80:
+        analysis['verification_status'] = 'high_confidence'
+    elif analysis['verification_score'] >= 55:
+        analysis['verification_status'] = 'medium_confidence'
+    else:
+        analysis['verification_status'] = 'low_confidence'
+
     return analysis
 
 

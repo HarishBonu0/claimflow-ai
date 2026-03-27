@@ -1,5 +1,11 @@
 import os
-os.environ['GEMINI_API_KEY'] = 'AIzaSyAxa9KJlmH_OTLSKcqBYEblPlwiPqWcKq0'
+from dotenv import load_dotenv
+
+load_dotenv()
+api_key = os.getenv('GEMINI_API_KEY')
+
+if not api_key:
+    raise RuntimeError('GEMINI_API_KEY not found. Set it in your .env file.')
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -7,7 +13,7 @@ warnings.filterwarnings('ignore')
 import google.generativeai as genai
 
 try:
-    genai.configure(api_key=os.environ['GEMINI_API_KEY'])
+    genai.configure(api_key=api_key)
     models = genai.list_models()
     
     print('Available models for generateContent:')

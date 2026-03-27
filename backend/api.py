@@ -7,17 +7,25 @@ while keeping existing LLM/RAG business logic intact.
 from __future__ import annotations
 
 import base64
-import hashlib
+import json
 import logging
 import os
+import secrets
 import tempfile
+import threading
 import time
 import uuid
+from contextlib import contextmanager
 from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, EmailStr
+from psycopg2 import pool
+from psycopg2.extras import Json, RealDictCursor
+from dotenv import load_dotenv
+from passlib.context import CryptContext
 
 # Suppress verbose logging from dependencies
 logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
@@ -65,11 +73,49 @@ def _load_system_prompt() -> str:
 
 SYSTEM_PROMPT = _load_system_prompt()
 
+load_dotenv()
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is required. Add Neon PostgreSQL URL to .env")
+
+APP_ENV = os.getenv("APP_ENV", "development").lower()
+AUTH_SESSION_HOURS = int(os.getenv("AUTH_SESSION_HOURS", "168"))
+RATE_LIMIT_AUTH_PER_MIN = int(os.getenv("RATE_LIMIT_AUTH_PER_MIN", "20"))
+RATE_LIMIT_CHAT_PER_MIN = int(os.getenv("RATE_LIMIT_CHAT_PER_MIN", "60"))
+RATE_LIMIT_UPLOAD_PER_MIN = int(os.getenv("RATE_LIMIT_UPLOAD_PER_MIN", "15"))
+RATE_LIMIT_VOICE_PER_MIN = int(os.getenv("RATE_LIMIT_VOICE_PER_MIN", "20"))
+VECTOR_BACKEND = os.getenv("VECTOR_BACKEND", "chroma_local")
+
+allowed_origins_raw = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173",
+)
+ALLOWED_ORIGINS = [origin.strip() for origin in allowed_origins_raw.split(",") if origin.strip()]
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+logger = logging.getLogger("claimflow.api")
+
+try:
+    import sentry_sdk  # type: ignore
+
+    sentry_dsn = os.getenv("SENTRY_DSN")
+    if sentry_dsn:
+        sentry_sdk.init(dsn=sentry_dsn, traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.05")))
+        logger.info("Sentry initialized")
+except Exception:
+    logger.warning("Sentry SDK not configured or unavailable")
+
+db_pool: pool.SimpleConnectionPool | None = None
+rate_limit_state: dict[str, list[float]] = {}
+rate_limit_lock = threading.Lock()
+
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     session_id: str | None = None
     language: str | None = None  # Selected language from frontend
+    session_token: str | None = None
+    include_audio: bool = False
 
 
 class ChatResponse(BaseModel):
@@ -114,29 +160,434 @@ class AuthResponse(BaseModel):
     session_token: str | None = None
 
 
-sessions: dict[str, SessionState] = {}
-users: dict[str, User] = {}  # In production, use a real database
-auth_sessions: dict[str, str] = {}  # session_token -> email mapping
-
-
 app = FastAPI(title="ClaimFlow AI API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-def get_or_create_session(session_id: str | None) -> tuple[str, SessionState]:
-    if session_id and session_id in sessions:
-        return session_id, sessions[session_id]
+@app.middleware("http")
+async def add_request_logging(request: Request, call_next):
+    request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
+    start_time = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        logger.exception(
+            json.dumps(
+                {
+                    "event": "request_error",
+                    "request_id": request_id,
+                    "method": request.method,
+                    "path": request.url.path,
+                    "duration_ms": duration_ms,
+                }
+            )
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error", "request_id": request_id},
+        )
 
-    new_id = str(uuid.uuid4())
-    sessions[new_id] = SessionState()
-    return new_id, sessions[new_id]
+    duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+    response.headers["X-Request-ID"] = request_id
+    logger.info(
+        json.dumps(
+            {
+                "event": "request_complete",
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "duration_ms": duration_ms,
+            }
+        )
+    )
+    return response
+
+
+def _client_ip(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+
+def enforce_rate_limit(request: Request, bucket: str, limit: int, window_seconds: int = 60) -> None:
+    now = time.time()
+    key = f"{bucket}:{_client_ip(request)}"
+    with rate_limit_lock:
+        timestamps = rate_limit_state.get(key, [])
+        timestamps = [ts for ts in timestamps if now - ts < window_seconds]
+        if len(timestamps) >= limit:
+            raise HTTPException(status_code=429, detail="Too many requests. Please wait and retry.")
+        timestamps.append(now)
+        rate_limit_state[key] = timestamps
+
+
+def get_health_warnings() -> list[str]:
+    warnings: list[str] = []
+
+    if APP_ENV == "production" and VECTOR_BACKEND == "chroma_local":
+        warnings.append("VECTOR_BACKEND is chroma_local in production. Consider managed vector storage.")
+
+    try:
+        import pytesseract
+
+        _ = pytesseract.get_tesseract_version()
+    except Exception:
+        warnings.append("Tesseract OCR binary not detected. Image document OCR may fail in deployment.")
+
+    return warnings
+
+
+def init_db_pool() -> None:
+    global db_pool
+    if db_pool is not None:
+        return
+    db_pool = pool.SimpleConnectionPool(minconn=1, maxconn=10, dsn=DATABASE_URL)
+
+
+@contextmanager
+def get_db_conn():
+    if db_pool is None:
+        init_db_pool()
+    assert db_pool is not None
+    conn = db_pool.getconn()
+    try:
+        yield conn
+    finally:
+        db_pool.putconn(conn)
+
+
+def init_db_schema() -> None:
+    with get_db_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    email TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS auth_sessions (
+                    session_token TEXT PRIMARY KEY,
+                    email TEXT NOT NULL REFERENCES users(email) ON DELETE CASCADE,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '168 hours')
+                );
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chat_sessions (
+                    session_id UUID PRIMARY KEY,
+                    user_email TEXT REFERENCES users(email) ON DELETE SET NULL,
+                    last_detected_language TEXT NOT NULL DEFAULT 'English',
+                    document_text TEXT NOT NULL DEFAULT '',
+                    document_chunks JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    uploaded_document TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chat_messages (
+                    id BIGSERIAL PRIMARY KEY,
+                    session_id UUID NOT NULL REFERENCES chat_sessions(session_id) ON DELETE CASCADE,
+                    role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+                    content TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id_id ON chat_messages(session_id, id);"
+            )
+            cur.execute(
+                "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS user_email TEXT REFERENCES users(email) ON DELETE SET NULL;"
+            )
+            cur.execute(
+                "ALTER TABLE auth_sessions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '168 hours');"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_auth_sessions_email_expires ON auth_sessions(email, expires_at DESC);"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_updated ON chat_sessions(user_email, updated_at DESC);"
+            )
+        conn.commit()
+
+
+def load_messages(session_id: str) -> list[dict[str, str]]:
+    with get_db_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT role, content FROM chat_messages WHERE session_id = %s ORDER BY id ASC",
+                (session_id,),
+            )
+            rows = cur.fetchall()
+    return [{"role": row["role"], "content": row["content"]} for row in rows]
+
+
+def get_session_state(session_id: str) -> SessionState | None:
+    with get_db_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT session_id, last_detected_language, document_text, document_chunks, uploaded_document
+                FROM chat_sessions
+                WHERE session_id = %s
+                """,
+                (session_id,),
+            )
+            row = cur.fetchone()
+
+    if not row:
+        return None
+
+    return SessionState(
+        messages=load_messages(session_id),
+        document_text=row["document_text"] or "",
+        document_chunks=row["document_chunks"] or [],
+        uploaded_document=row["uploaded_document"],
+        last_detected_language=row["last_detected_language"] or "English",
+    )
+
+
+def create_session(user_email: str | None = None) -> tuple[str, SessionState]:
+    session_id = str(uuid.uuid4())
+    with get_db_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO chat_sessions (session_id, user_email) VALUES (%s, %s)",
+                (session_id, user_email),
+            )
+        conn.commit()
+    return session_id, SessionState()
+
+
+def attach_session_to_user(session_id: str, user_email: str) -> None:
+    with get_db_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE chat_sessions
+                SET user_email = %s,
+                    updated_at = NOW()
+                WHERE session_id = %s
+                  AND (user_email IS NULL OR user_email = %s)
+                """,
+                (user_email, session_id, user_email),
+            )
+        conn.commit()
+
+
+def upsert_session_state(session_id: str, session: SessionState) -> None:
+    with get_db_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE chat_sessions
+                SET last_detected_language = %s,
+                    document_text = %s,
+                    document_chunks = %s,
+                    uploaded_document = %s,
+                    updated_at = NOW()
+                WHERE session_id = %s
+                """,
+                (
+                    session.last_detected_language,
+                    session.document_text,
+                    Json(session.document_chunks),
+                    session.uploaded_document,
+                    session_id,
+                ),
+            )
+        conn.commit()
+
+
+def add_message(session_id: str, role: str, content: str) -> None:
+    with get_db_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO chat_messages (session_id, role, content) VALUES (%s, %s, %s)",
+                (session_id, role, content),
+            )
+        conn.commit()
+
+
+def get_user_by_email(email: str) -> User | None:
+    with get_db_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT email, name, password_hash, EXTRACT(EPOCH FROM created_at) AS created_at FROM users WHERE email = %s",
+                (email,),
+            )
+            row = cur.fetchone()
+    if not row:
+        return None
+    return User(
+        email=row["email"],
+        name=row["name"],
+        password_hash=row["password_hash"],
+        created_at=float(row["created_at"]),
+    )
+
+
+def create_user_record(name: str, email: str, password_hash: str) -> User:
+    with get_db_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                INSERT INTO users (email, name, password_hash)
+                VALUES (%s, %s, %s)
+                RETURNING email, name, password_hash, EXTRACT(EPOCH FROM created_at) AS created_at
+                """,
+                (email, name, password_hash),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    return User(
+        email=row["email"],
+        name=row["name"],
+        password_hash=row["password_hash"],
+        created_at=float(row["created_at"]),
+    )
+
+
+def create_auth_session(email: str) -> str:
+    session_token = secrets.token_urlsafe(48)
+    with get_db_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO auth_sessions (session_token, email, expires_at)
+                VALUES (%s, %s, NOW() + (%s || ' hours')::interval)
+                """,
+                (session_token, email, AUTH_SESSION_HOURS),
+            )
+        conn.commit()
+    return session_token
+
+
+def delete_auth_session(session_token: str) -> None:
+    with get_db_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM auth_sessions WHERE session_token = %s", (session_token,))
+        conn.commit()
+
+
+def delete_all_auth_sessions(email: str) -> None:
+    with get_db_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM auth_sessions WHERE email = %s", (email,))
+        conn.commit()
+
+
+def resolve_session_user(session_token: str) -> User | None:
+    with get_db_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT u.email, u.name, u.password_hash, EXTRACT(EPOCH FROM u.created_at) AS created_at
+                FROM auth_sessions a
+                JOIN users u ON u.email = a.email
+                WHERE a.session_token = %s
+                  AND a.expires_at > NOW()
+                """,
+                (session_token,),
+            )
+            row = cur.fetchone()
+    if not row:
+        return None
+    return User(
+        email=row["email"],
+        name=row["name"],
+        password_hash=row["password_hash"],
+        created_at=float(row["created_at"]),
+    )
+
+
+def resolve_session_email(session_token: str | None) -> str | None:
+    if not session_token:
+        return None
+    with get_db_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT email FROM auth_sessions WHERE session_token = %s AND expires_at > NOW()",
+                (session_token,),
+            )
+            row = cur.fetchone()
+    if not row:
+        return None
+    return row["email"]
+
+
+def list_user_sessions(email: str) -> list[dict[str, Any]]:
+    with get_db_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT
+                    s.session_id::text AS session_id,
+                    COALESCE(
+                        (SELECT LEFT(m.content, 40)
+                         FROM chat_messages m
+                         WHERE m.session_id = s.session_id AND m.role = 'user'
+                         ORDER BY m.id ASC
+                         LIMIT 1),
+                        'New Chat'
+                    ) AS title,
+                    s.updated_at
+                FROM chat_sessions s
+                WHERE s.user_email = %s
+                ORDER BY s.updated_at DESC
+                """,
+                (email,),
+            )
+            rows = cur.fetchall()
+
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        title = row["title"] or "New Chat"
+        if len(title) > 40:
+            title = f"{title[:40]}..."
+        result.append({"id": row["session_id"], "title": title})
+    return result
+
+
+def get_or_create_session(session_id: str | None, user_email: str | None = None) -> tuple[str, SessionState]:
+    normalized_session_id: str | None = None
+    if session_id:
+        try:
+            normalized_session_id = str(uuid.UUID(session_id))
+        except ValueError:
+            normalized_session_id = None
+
+    if normalized_session_id:
+        existing = get_session_state(normalized_session_id)
+        if existing:
+            if user_email:
+                attach_session_to_user(normalized_session_id, user_email)
+            return normalized_session_id, existing
+
+    return create_session(user_email=user_email)
 
 
 def chunk_document_text(text: str, chunk_size: int = 900, overlap: int = 150) -> list[str]:
@@ -306,52 +757,61 @@ def parse_preferred_language(preferred_language: str | None) -> str | None:
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, Any]:
+    warnings = get_health_warnings()
+    return {
+        "status": "ok",
+        "env": APP_ENV,
+        "vector_backend": VECTOR_BACKEND,
+        "warnings": warnings,
+    }
 
 
 def hash_password(password: str) -> str:
-    """Hash password using SHA-256."""
-    return hashlib.sha256(password.encode()).hexdigest()
+    """Hash password using bcrypt."""
+    return pwd_context.hash(password)
 
 
 def verify_password(password: str, password_hash: str) -> bool:
     """Verify password against hash."""
-    return hash_password(password) == password_hash
+    try:
+        return pwd_context.verify(password, password_hash)
+    except Exception:
+        return False
 
 
 def init_demo_user():
     """Create a demo user for testing purposes."""
     demo_email = "abc@gmail.com"
-    if demo_email not in users:
-        users[demo_email] = User(
-            email=demo_email,
+    if not get_user_by_email(demo_email):
+        create_user_record(
             name="Demo User",
-            password_hash=hash_password("12345678")
+            email=demo_email,
+            password_hash=hash_password("12345678"),
         )
 
 
-# Initialize demo user
-init_demo_user()
+@app.on_event("startup")
+def startup_event() -> None:
+    init_db_pool()
+    init_db_schema()
+    init_demo_user()
 
 
 @app.post("/auth/signup", response_model=AuthResponse)
-def signup(request: SignupRequest) -> AuthResponse:
+def signup(request: SignupRequest, req: Request) -> AuthResponse:
     """Register a new user."""
-    if request.email in users:
+    enforce_rate_limit(req, "auth_signup", RATE_LIMIT_AUTH_PER_MIN)
+    if get_user_by_email(request.email):
         raise HTTPException(status_code=400, detail="Email already registered")
     
-    # Create new user
-    user = User(
-        email=request.email,
+    user = create_user_record(
         name=request.name,
-        password_hash=hash_password(request.password)
+        email=request.email,
+        password_hash=hash_password(request.password),
     )
-    users[request.email] = user
     
-    # Create session token
-    session_token = str(uuid.uuid4())
-    auth_sessions[session_token] = request.email
+    session_token = create_auth_session(user.email)
     
     return AuthResponse(
         success=True,
@@ -363,18 +823,17 @@ def signup(request: SignupRequest) -> AuthResponse:
 
 
 @app.post("/auth/login", response_model=AuthResponse)
-def login(request: LoginRequest) -> AuthResponse:
+def login(request: LoginRequest, req: Request) -> AuthResponse:
     """Login an existing user."""
-    if request.email not in users:
+    enforce_rate_limit(req, "auth_login", RATE_LIMIT_AUTH_PER_MIN)
+    user = get_user_by_email(request.email)
+    if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    
-    user = users[request.email]
+
     if not verify_password(request.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
-    # Create session token
-    session_token = str(uuid.uuid4())
-    auth_sessions[session_token] = request.email
+    session_token = create_auth_session(user.email)
     
     return AuthResponse(
         success=True,
@@ -386,24 +845,19 @@ def login(request: LoginRequest) -> AuthResponse:
 
 
 @app.post("/auth/logout")
-def logout(session_token: str = Form(...)) -> dict[str, str]:
+def logout(request: Request, session_token: str = Form(...)) -> dict[str, str]:
     """Logout user and invalidate session token."""
-    if session_token in auth_sessions:
-        del auth_sessions[session_token]
+    enforce_rate_limit(request, "auth_logout", RATE_LIMIT_AUTH_PER_MIN)
+    delete_auth_session(session_token)
     return {"message": "Logged out successfully"}
 
 
 @app.get("/auth/verify")
 def verify_session(session_token: str) -> dict[str, Any]:
     """Verify if session token is valid."""
-    if session_token not in auth_sessions:
-        raise HTTPException(status_code=401, detail="Invalid or expired session")
-    
-    email = auth_sessions[session_token]
-    user = users.get(email)
-    
+    user = resolve_session_user(session_token)
     if not user:
-        raise HTTPException(status_code=401, detail="User not found")
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
     
     return {
         "valid": True,
@@ -412,20 +866,43 @@ def verify_session(session_token: str) -> dict[str, Any]:
     }
 
 
+@app.post("/auth/revoke-all")
+def revoke_all_sessions(request: Request, session_token: str = Form(...)) -> dict[str, str]:
+    enforce_rate_limit(request, "auth_revoke_all", RATE_LIMIT_AUTH_PER_MIN)
+    user = resolve_session_user(session_token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+    delete_all_auth_sessions(user.email)
+    return {"message": "All sessions revoked successfully"}
+
+
+@app.get("/sessions")
+def sessions_list(session_token: str) -> dict[str, Any]:
+    user = resolve_session_user(session_token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+    return {"sessions": list_user_sessions(user.email)}
+
+
 @app.post("/chat", response_model=ChatResponse)
-def chat(request: ChatRequest) -> ChatResponse:
-    session_id, session = get_or_create_session(request.session_id)
+def chat(request: ChatRequest, req: Request) -> ChatResponse:
+    enforce_rate_limit(req, "chat", RATE_LIMIT_CHAT_PER_MIN)
+    user_email = resolve_session_email(request.session_token)
+    session_id, session = get_or_create_session(request.session_id, user_email=user_email)
 
     session.messages.append({"role": "user", "content": request.message})
+    add_message(session_id, "user", request.message)
     response_text, lang_code = generate_chat_response(
         request.message, 
         session,
         preferred_language=request.language  # Pass preferred language
     )
     session.messages.append({"role": "assistant", "content": response_text})
+    add_message(session_id, "assistant", response_text)
+    upsert_session_state(session_id, session)
 
-    # Generate TTS audio in the correct language
-    audio_base64 = maybe_build_tts_audio(response_text, lang_code)
+    # For typed chat, generate voice output only when explicitly requested.
+    audio_base64 = maybe_build_tts_audio(response_text, lang_code) if request.include_audio else None
 
     return ChatResponse(
         session_id=session_id,
@@ -438,11 +915,15 @@ def chat(request: ChatRequest) -> ChatResponse:
 @app.post("/voice", response_model=ChatResponse)
 @app.post("/voice-input", response_model=ChatResponse)
 def voice_chat(
+    req: Request,
     session_id: str | None = Form(default=None),
     preferred_language: str | None = Form(default=None),
+    session_token: str | None = Form(default=None),
     audio: UploadFile = File(...),
 ) -> ChatResponse:
-    session_id, session = get_or_create_session(session_id)
+    enforce_rate_limit(req, "voice", RATE_LIMIT_VOICE_PER_MIN)
+    user_email = resolve_session_email(session_token)
+    session_id, session = get_or_create_session(session_id, user_email=user_email)
 
     suffix = os.path.splitext(audio.filename or "voice.wav")[1] or ".wav"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_audio:
@@ -466,6 +947,7 @@ def voice_chat(
             )
 
         session.messages.append({"role": "user", "content": user_text})
+        add_message(session_id, "user", user_text)
         # Pass preferred_language to generate_chat_response for language-specific responses
         response_text, lang_code = generate_chat_response(
             user_text, 
@@ -473,6 +955,8 @@ def voice_chat(
             preferred_language=preferred_language
         )
         session.messages.append({"role": "assistant", "content": response_text})
+        add_message(session_id, "assistant", response_text)
+        upsert_session_state(session_id, session)
 
         audio_b64 = maybe_build_tts_audio(response_text, lang_code)
         return ChatResponse(
@@ -492,10 +976,14 @@ def voice_chat(
 @app.post("/upload")
 @app.post("/upload-document")
 def upload_document(
+    req: Request,
     file: UploadFile = File(...),
     session_id: str | None = Form(default=None),
+    session_token: str | None = Form(default=None),
 ) -> dict[str, Any]:
-    session_id, session = get_or_create_session(session_id)
+    enforce_rate_limit(req, "upload", RATE_LIMIT_UPLOAD_PER_MIN)
+    user_email = resolve_session_email(session_token)
+    session_id, session = get_or_create_session(session_id, user_email=user_email)
 
     file_name = file.filename or "document"
     extension = os.path.splitext(file_name)[1].lower()
@@ -527,6 +1015,7 @@ def upload_document(
     session.document_text = document_text
     session.document_chunks = chunk_document_text(document_text)
     session.uploaded_document = file_name
+    upsert_session_state(session_id, session)
 
     return {
         "session_id": session_id,
@@ -539,9 +1028,9 @@ def upload_document(
 
 @app.get("/history/{session_id}")
 def history(session_id: str) -> dict[str, Any]:
-    if session_id not in sessions:
+    session = get_session_state(session_id)
+    if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    session = sessions[session_id]
     return {
         "session_id": session_id,
         "messages": session.messages,

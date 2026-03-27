@@ -3,13 +3,14 @@ import {
   Mic, 
   FileText, 
   Send, 
+  Square,
   LogOut, 
   MessageSquare,
   User,
   Mail,
   Lock
 } from 'lucide-react';
-import { getHistory, sendChatMessage, sendVoiceAudio, uploadDocument } from './api';
+import { getHistory, getSessions, sendChatMessage, sendVoiceAudio, uploadDocument } from './api';
 
 const LANGUAGES = [
   { label: 'English', code: 'en-IN' },
@@ -70,6 +71,8 @@ function App() {
   const mediaStreamRef = useRef(null);
   const audioChunksRef = useRef([]);
   const autoStopTimerRef = useRef(null);
+  const requestControllerRef = useRef(null);
+  const activeAudioRef = useRef(null);
 
   const selectedSpeechLocale = useMemo(
     () => LANGUAGES.find((lang) => lang.label === selectedLanguage)?.code || 'en-IN',
@@ -89,7 +92,37 @@ function App() {
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
     }
+    if (requestControllerRef.current) {
+      requestControllerRef.current.abort();
+      requestControllerRef.current = null;
+    }
+    if (activeAudioRef.current) {
+      activeAudioRef.current.pause();
+      activeAudioRef.current = null;
+    }
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
   }, []);
+
+  async function loadUserSessions(token) {
+    if (!token) {
+      setChatHistory([]);
+      return;
+    }
+
+    try {
+      const data = await getSessions(token);
+      const sessions = (data.sessions || []).map((session) => ({
+        id: session.id,
+        title: session.title || 'New Chat',
+        messages: [],
+      }));
+      setChatHistory(sessions);
+    } catch {
+      setChatHistory([]);
+    }
+  }
 
   useEffect(() => {
     // Check for existing session token
@@ -112,6 +145,7 @@ function App() {
         setSessionToken(token);
         setCurrentUser({ email: data.user_email, name: data.user_name });
         setIsAuthenticated(true);
+        await loadUserSessions(token);
       } else {
         localStorage.removeItem('sessionToken');
       }
@@ -148,6 +182,7 @@ function App() {
       setIsGuestMode(false);
       localStorage.setItem('sessionToken', data.session_token);
       localStorage.removeItem('guestMode');
+      await loadUserSessions(data.session_token);
       setShowAuthModal(false);
       setAuthForm({ name: '', email: '', password: '' });
       setView('chat');
@@ -168,11 +203,23 @@ function App() {
   }
 
   async function handleLogout() {
+    if (sessionToken) {
+      const formData = new FormData();
+      formData.append('session_token', sessionToken);
+      try {
+        await fetch(`${API_BASE}/auth/logout`, { method: 'POST', body: formData });
+      } catch {
+        // Ignore network errors during logout cleanup.
+      }
+    }
+
     localStorage.removeItem('guestMode');
+    localStorage.removeItem('sessionToken');
     setIsAuthenticated(false);
     setIsGuestMode(false);
     setCurrentUser(null);
     setSessionToken(null);
+    setSessionId(null);
     setChatHistory([]);
     setMessages([]);
     setView('landing');
@@ -186,11 +233,9 @@ function App() {
     }
 
     if (!sessionId) {
-      const newId = generateLocalSessionId();
-      setSessionId(newId);
-      // Only save to history if not in guest mode
-      if (!isGuestMode) {
-        setChatHistory((prev) => [{ id: newId, title: 'New Chat', messages: [] }, ...prev]);
+      if (isGuestMode) {
+        const newId = generateLocalSessionId();
+        setSessionId(newId);
       }
     }
     setView('chat');
@@ -230,16 +275,37 @@ function App() {
     }
   }
 
+  function stopConversation() {
+    if (requestControllerRef.current) {
+      requestControllerRef.current.abort();
+      requestControllerRef.current = null;
+    }
+
+    if (activeAudioRef.current) {
+      activeAudioRef.current.pause();
+      activeAudioRef.current.currentTime = 0;
+      activeAudioRef.current = null;
+    }
+
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+
+    setIsSending(false);
+    setError('Response stopped. You can send a new question.');
+  }
+
   function startNewChat() {
-    const newId = generateLocalSessionId();
-    setSessionId(newId);
+    if (isGuestMode) {
+      const newId = generateLocalSessionId();
+      setSessionId(newId);
+      setChatHistory((prev) => [{ id: newId, title: 'New Chat', messages: [] }, ...prev]);
+    } else {
+      setSessionId(null);
+    }
     setMessages([]);
     setInput('');
     setError('');
-    // Only save to history if not in guest mode
-    if (!isGuestMode) {
-      setChatHistory((prev) => [{ id: newId, title: 'New Chat', messages: [] }, ...prev]);
-    }
   }
 
   async function submitMessage(text) {
@@ -250,9 +316,11 @@ function App() {
 
     setError('');
     setIsSending(true);
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
 
-    const currentSessionId = sessionId || generateLocalSessionId();
-    if (!sessionId) {
+    const currentSessionId = sessionId || (isGuestMode ? generateLocalSessionId() : null);
+    if (currentSessionId && !sessionId) {
       setSessionId(currentSessionId);
     }
 
@@ -264,8 +332,10 @@ function App() {
       const data = await sendChatMessage({ 
         message: trimmed, 
         session_id: currentSessionId,
-        language: selectedLanguage  // Pass selected language to backend
-      });
+        language: selectedLanguage,
+        session_token: sessionToken,
+        include_audio: false,
+      }, { signal: controller.signal });
 
       if (data.session_id !== currentSessionId) {
         setSessionId(data.session_id);
@@ -277,27 +347,13 @@ function App() {
       const withAssistant = [...nextMessages, { role: 'assistant', content: data.response }];
       setMessages(withAssistant);
       syncChatHistory(data.session_id || currentSessionId, withAssistant);
-
-      // Use backend-generated audio if available, otherwise fallback to browser TTS
-      if (data.audio_base64) {
-        try {
-          const audioBlob = base64ToBlob(data.audio_base64, 'audio/mpeg');
-          const audioUrl = URL.createObjectURL(audioBlob);
-          const audio = new Audio(audioUrl);
-          audio.play();
-          // Clean up the URL after playing
-          audio.onended = () => URL.revokeObjectURL(audioUrl);
-        } catch (audioErr) {
-          // Fallback to browser TTS
-          playBrowserTTS(data.response);
-        }
-      } else {
-        // Fallback to browser TTS if backend didn't provide audio
-        playBrowserTTS(data.response);
-      }
     } catch (err) {
+      if (err?.name === 'AbortError') {
+        return;
+      }
       setError(err.message || 'Failed to send message.');
     } finally {
+      requestControllerRef.current = null;
       setIsSending(false);
     }
   }
@@ -383,20 +439,27 @@ function App() {
 
     setError('');
     setIsSending(true);
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
 
-    const currentSessionId = sessionId || generateLocalSessionId();
-    if (!sessionId) {
+    const currentSessionId = sessionId || (isGuestMode ? generateLocalSessionId() : null);
+    if (currentSessionId && !sessionId) {
       setSessionId(currentSessionId);
     }
 
     const extension = (audioBlob.type.split('/')[1] || 'webm').split(';')[0];
     const formData = new FormData();
-    formData.append('session_id', currentSessionId);
+    if (currentSessionId) {
+      formData.append('session_id', currentSessionId);
+    }
+    if (sessionToken) {
+      formData.append('session_token', sessionToken);
+    }
     formData.append('preferred_language', selectedLanguage);
     formData.append('audio', audioBlob, `voice-input.${extension}`);
 
     try {
-      const data = await sendVoiceAudio(formData);
+      const data = await sendVoiceAudio(formData, { signal: controller.signal });
 
       if (data.session_id !== currentSessionId) {
         setSessionId(data.session_id);
@@ -420,6 +483,7 @@ function App() {
         const audioResponseBlob = makeAudioBlob(data.audio_base64);
         const audioUrl = URL.createObjectURL(audioResponseBlob);
         const audio = new Audio(audioUrl);
+        activeAudioRef.current = audio;
         audio.onended = () => URL.revokeObjectURL(audioUrl);
         audio.play().catch(() => URL.revokeObjectURL(audioUrl));
       } else if (window.speechSynthesis) {
@@ -429,8 +493,12 @@ function App() {
         window.speechSynthesis.speak(utterance);
       }
     } catch (err) {
+      if (err?.name === 'AbortError') {
+        return;
+      }
       setError(err.message || 'Voice request failed. Please try again.');
     } finally {
+      requestControllerRef.current = null;
       setIsSending(false);
     }
   }
@@ -522,13 +590,18 @@ function App() {
     setError('');
     setIsSending(true);
 
-    const currentSessionId = sessionId || generateLocalSessionId();
-    if (!sessionId) {
+    const currentSessionId = sessionId || (isGuestMode ? generateLocalSessionId() : null);
+    if (currentSessionId && !sessionId) {
       setSessionId(currentSessionId);
     }
 
     const formData = new FormData();
-    formData.append('session_id', currentSessionId);
+    if (currentSessionId) {
+      formData.append('session_id', currentSessionId);
+    }
+    if (sessionToken) {
+      formData.append('session_token', sessionToken);
+    }
     formData.append('file', file);
 
     try {
@@ -676,7 +749,7 @@ function App() {
       <div className="landing-page">
         <header className="navbar">
           <div className="brand">
-            <span className="logo-icon">🛡️</span>
+            <span className="logo-icon" aria-hidden="true"></span>
             ClaimFlow AI
           </div>
           <div className="nav-actions">
@@ -736,6 +809,16 @@ function App() {
                 <div className="preview-message user">What documents do I need for a claim?</div>
                 <div className="preview-message assistant">I'll help you with that! For most insurance claims, you'll need...</div>
               </div>
+              <div className="hero-graph">
+                <div className="graph-title">Claim Resolution Trend</div>
+                <svg viewBox="0 0 320 90" role="img" aria-label="Claim resolution trend rising over time">
+                  <polyline points="10,70 70,62 120,55 170,48 220,36 270,28 310,18" />
+                  <circle cx="10" cy="70" r="3" />
+                  <circle cx="120" cy="55" r="3" />
+                  <circle cx="220" cy="36" r="3" />
+                  <circle cx="310" cy="18" r="4" />
+                </svg>
+              </div>
             </div>
           </div>
         </section>
@@ -781,7 +864,7 @@ function App() {
         <aside className="chat-sidebar">
           <div className="sidebar-header">
             <div className="brand-small">
-              <span className="logo-icon">🛡️</span>
+              <span className="logo-icon" aria-hidden="true"></span>
               ClaimFlow AI
             </div>
           </div>
@@ -956,12 +1039,13 @@ function App() {
               />
 
               <button
-                type="submit"
-                className="send-btn"
-                disabled={isSending || !input.trim()}
-                title="Send Message"
+                  type={isSending ? 'button' : 'submit'}
+                  className={isSending ? 'stop-btn' : 'send-btn'}
+                  onClick={isSending ? stopConversation : undefined}
+                  disabled={!isSending && !input.trim()}
+                  title={isSending ? 'Stop Response' : 'Send Message'}
               >
-                <Send size={20} />
+                  {isSending ? <Square size={20} /> : <Send size={20} />}
               </button>
             </form>
 

@@ -29,3 +29,8 @@ frontend/dist/
 
 # Runtime logs
 llm/gemini.log
+
+# Secrets
+.env
+.env.*
+!.env.example
