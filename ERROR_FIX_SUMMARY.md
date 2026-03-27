@@ -1,7 +1,7 @@
 # Error Fix Summary: "AI Service is Temporarily Unavailable"
 
 ## Issue
-The Streamlit app was showing a generic "AI service is temporarily unavailable" message, hiding the real errors from the Gemini API.
+The previous UI layer was showing a generic "AI service is temporarily unavailable" message, hiding the real errors from the Gemini API.
 
 ## Root Causes Identified
 1. Missing detailed error logging

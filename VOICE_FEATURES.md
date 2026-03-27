@@ -11,7 +11,7 @@ ClaimFlow AI now features comprehensive **multilingual voice input and output** 
 ### 1. **Voice Input (Recording & Upload)**
 
 #### 🎙️ Record Audio
-- **Real-time recording** directly in the Streamlit sidebar
+- **Real-time recording** directly in the React frontend interface
 - **One-click recording** for hands-free interaction
 - Works with system microphone
 - Auto-saves to temporary file
@@ -421,7 +421,7 @@ UI Display
 - ✅ **voice/tts.py**: TTS processing
 - ✅ **llm/** modules: Safety & generation
 - ✅ **rag/** modules: Context retrieval
-- ✅ **Streamlit**: Frontend UI
+- ✅ **React (Vite)**: Frontend UI
 
 ---
 
@@ -441,7 +441,7 @@ pip install whisper gtts playsound sounddevice scipy
 ### Environment
 ```bash
 export GEMINI_API_KEY="your-api-key"
-streamlit run app.py
+uvicorn api:app --reload
 ```
 
 ---

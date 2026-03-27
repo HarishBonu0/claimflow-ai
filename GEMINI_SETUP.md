@@ -208,19 +208,18 @@ For the canonical rule set used by runtime logic and docs, see:
 - **Speed**: Fast responses
 - **Context Window**: Large (can handle detailed context)
 
-## Integration with Streamlit (Future)
+## Integration with FastAPI + React
 
-When ready to add UI:
+Use the backend API endpoint from your frontend:
 ```python
-import streamlit as st
-from llm.integration_example import answer_query
+# FastAPI backend
+from backend.api import app
 
-st.title("Insurance Claims Explainer")
-question = st.text_input("Ask a question:")
-if question:
-    answer = answer_query(question, verbose=False)
-    st.write(answer)
+# Run with:
+# uvicorn api:app --reload
 ```
+
+From React, send user input to `POST /chat` and render `response` from the JSON payload.
 
 ## Next Steps
 

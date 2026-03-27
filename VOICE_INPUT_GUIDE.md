@@ -121,7 +121,7 @@ STEP 4: Listen
 **Solution**: Check system volume, allow browser to use audio
 
 ### Language section not showing
-**Cause**: Streamlit cache issue
+**Cause**: Frontend cache issue
 **Solution**: Hard refresh browser (Ctrl+Shift+R) or restart app
 
 ---

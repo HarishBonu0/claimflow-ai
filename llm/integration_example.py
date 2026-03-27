@@ -12,7 +12,6 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from rag.retriever import retrieve_context
 from llm.gemini_client import generate_response, generate_response_with_history
 
 # Configure logging
@@ -43,8 +42,9 @@ def answer_query(user_query, context_k=3, verbose=False, conversation_history=No
             print(f"📋 Question: {user_query}")
             logger.info(f"Processing query: {user_query[:100]}...")
         
-        # Step 1: Retrieve context using RAG
+        # Step 1: Retrieve context using RAG (lazy import to avoid startup issues)
         try:
+            from rag.retriever import retrieve_context
             context = retrieve_context(user_query, k=context_k)
             
             if verbose:

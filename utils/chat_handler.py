@@ -56,11 +56,11 @@ class ChatHandler:
     @staticmethod
     def simulate_streaming(text: str, placeholder):
         """
-        Simulate ChatGPT-style streaming effect
-        
+        Simulate ChatGPT-style streaming effect.
+
         Args:
             text: Full text to display
-            placeholder: Streamlit placeholder for text
+            placeholder: UI placeholder object with markdown rendering support
         """
         displayed_text = ""
         for char in text:

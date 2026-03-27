@@ -436,6 +436,7 @@ def chat(request: ChatRequest) -> ChatResponse:
 
 
 @app.post("/voice", response_model=ChatResponse)
+@app.post("/voice-input", response_model=ChatResponse)
 def voice_chat(
     session_id: str | None = Form(default=None),
     preferred_language: str | None = Form(default=None),
@@ -489,6 +490,7 @@ def voice_chat(
 
 
 @app.post("/upload")
+@app.post("/upload-document")
 def upload_document(
     file: UploadFile = File(...),
     session_id: str | None = Form(default=None),

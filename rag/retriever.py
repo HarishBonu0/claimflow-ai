@@ -9,6 +9,10 @@ import logging
 import sys
 from pathlib import Path
 
+# Set environment variables BEFORE importing sentence-transformers
+os.environ['HF_HUB_DISABLE_IMPLICIT_TOKEN'] = '1'
+os.environ['HF_HUB_OFFLINE'] = '0'
+
 from sentence_transformers import SentenceTransformer
 import chromadb
 
@@ -23,11 +27,18 @@ logger = logging.getLogger(__name__)
 # Initialize model and database globally (only once)
 try:
     logger.info("Loading SentenceTransformer model (all-MiniLM-L6-v2)...")
-    model = SentenceTransformer('all-MiniLM-L6-v2')
+    model = SentenceTransformer('all-MiniLM-L6-v2', trust_remote_code=False, device='cpu')
     logger.info("[OK] SentenceTransformer model loaded successfully")
 except Exception as e:
-    logger.error(f"[ERROR] Failed to load SentenceTransformer model: {type(e).__name__}: {e}", exc_info=True)
-    raise
+    logger.warning(f"Retrying SentenceTransformer model load from offline cache: {type(e).__name__}")
+    try:
+        # Try loading offline from cache
+        os.environ['HF_HUB_OFFLINE'] = '1'
+        model = SentenceTransformer('all-MiniLM-L6-v2', trust_remote_code=False, device='cpu')
+        logger.info("[OK] SentenceTransformer model loaded from offline cache")
+    except Exception as e2:
+        logger.error(f"[ERROR] Failed to load SentenceTransformer model: {type(e2).__name__}: {e2}", exc_info=True)
+        raise
 
 db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "vector_db")
 logger.info(f"Using vector database path: {db_path}")

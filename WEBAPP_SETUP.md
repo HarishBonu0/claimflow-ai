@@ -13,7 +13,7 @@ pip install -r requirements.txt
 ## 2. Start backend
 
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn api:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 API base URL: `http://localhost:8000`
@@ -33,7 +33,9 @@ Frontend URL: `http://localhost:5173`
 - `GET /health`
 - `POST /chat`
 - `POST /voice`
+- `POST /voice-input`
 - `POST /upload`
+- `POST /upload-document`
 - `GET /history/{session_id}`
 
 ## Notes

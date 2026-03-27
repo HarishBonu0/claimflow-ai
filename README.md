@@ -44,7 +44,15 @@ A production-ready RAG (Retrieval-Augmented Generation) system integrated with G
 
 ```
 claimflow-ai-rag/
-├── app.py                    # Main entry point
+├── api.py                    # ASGI entrypoint (uvicorn api:app)
+├── main.py                   # Alternative backend entrypoint
+├── backend/
+│   ├── api.py                # FastAPI routes and orchestration
+│   └── __init__.py
+├── frontend/
+│   ├── src/
+│   ├── public/
+│   └── package.json
 ├── requirements.txt          # Dependencies
 ├── README.md                 # This file
 ├── GEMINI_SETUP.md          # API setup guide
