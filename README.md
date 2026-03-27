@@ -230,6 +230,57 @@ Generates simple answer using Gemini Flash.
 
 ---
 
+## 🌐 Deploy: Render (Backend) + Vercel (Frontend)
+
+### 1) Deploy backend to Render
+
+This repo already includes [render.yaml](render.yaml), so you can deploy with Render Blueprint.
+
+1. Push your code to GitHub.
+2. In Render, choose **New +** → **Blueprint**.
+3. Select the repo and confirm [render.yaml](render.yaml).
+4. Set these required environment variables in Render:
+   - `DATABASE_URL` = your Neon/PostgreSQL connection string
+   - `GEMINI_API_KEY` = your Gemini API key
+   - `ALLOWED_ORIGINS` = your Vercel URL(s), comma-separated
+     - Example: `https://your-app.vercel.app,https://your-custom-domain.com`
+5. Deploy and copy backend URL, for example:
+   - `https://claimflow-api.onrender.com`
+6. Verify health endpoint:
+   - `https://claimflow-api.onrender.com/health`
+
+### 2) Deploy frontend to Vercel
+
+The frontend is in [frontend](frontend) and uses Vite.
+
+1. In Vercel, choose **Add New Project** and import the same repo.
+2. Configure project settings:
+   - Root Directory: `frontend`
+   - Framework Preset: `Vite`
+3. Add environment variable in Vercel:
+   - `VITE_API_BASE_URL` = your Render backend URL
+     - Example: `https://claimflow-api.onrender.com`
+4. Deploy.
+
+### 3) Connect both services
+
+After Vercel gives you your frontend URL:
+
+1. Go back to Render service settings.
+2. Update `ALLOWED_ORIGINS` to include your Vercel domain.
+3. Redeploy backend if needed.
+4. Test chat/document/voice flows from deployed frontend.
+
+### 4) Notes
+
+- [frontend/vercel.json](frontend/vercel.json) is included for SPA routing and Vite output config.
+- [frontend/.env.example](frontend/.env.example) shows required frontend env variables.
+- If API calls fail in browser, confirm both:
+  - `VITE_API_BASE_URL` points to Render backend
+  - Render `ALLOWED_ORIGINS` includes exact Vercel domain
+
+---
+
 ## 📖 Documentation
 
 - [GEMINI_SETUP.md](GEMINI_SETUP.md) - Complete API setup
