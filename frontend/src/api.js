@@ -114,3 +114,92 @@ export async function getSessions(sessionToken) {
 
   return response.json();
 }
+
+// =========================
+// Authentication Endpoints
+// =========================
+
+export async function signup(name, email, password) {
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}/auth/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password }),
+    });
+  } catch (err) {
+    asUserFriendlyNetworkError(err, 'Signup failed - network error');
+  }
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ 
+      detail: `Signup failed with status ${response.status}` 
+    }));
+    throw new Error(errorData.detail || 'Signup failed');
+  }
+
+  return response.json();
+}
+
+export async function login(email, password) {
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+  } catch (err) {
+    asUserFriendlyNetworkError(err, 'Login failed - network error');
+  }
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ 
+      detail: `Login failed with status ${response.status}` 
+    }));
+    throw new Error(errorData.detail || 'Login failed');
+  }
+
+  return response.json();
+}
+
+export async function logout(sessionToken) {
+  const formData = new FormData();
+  formData.append('session_token', sessionToken);
+
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}/auth/logout`, {
+      method: 'POST',
+      body: formData,
+    });
+  } catch (err) {
+    // Logout errors should not block the user from logging out locally
+    console.warn('Logout request failed:', err);
+    return { message: 'Logout completed locally' };
+  }
+
+  if (!response.ok) {
+    // Don't throw on logout failure - just log it
+    console.warn('Logout response not ok, proceeding with local logout');
+    return { message: 'Logout completed locally' };
+  }
+
+  return response.json();
+}
+
+export async function verifySession(sessionToken) {
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}/auth/verify?session_token=${encodeURIComponent(sessionToken)}`);
+  } catch (err) {
+    asUserFriendlyNetworkError(err, 'Failed to verify session');
+  }
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'Failed to verify session' }));
+    throw new Error(errorData.detail || 'Failed to verify session');
+  }
+
+  return response.json();
+}

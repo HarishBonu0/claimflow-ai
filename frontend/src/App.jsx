@@ -10,7 +10,17 @@ import {
   Mail,
   Lock
 } from 'lucide-react';
-import { getHistory, getSessions, sendChatMessage, sendVoiceAudio, uploadDocument } from './api';
+import { 
+  getHistory, 
+  getSessions, 
+  sendChatMessage, 
+  sendVoiceAudio, 
+  uploadDocument,
+  signup,
+  login,
+  logout,
+  verifySession,
+} from './api';
 
 const LANGUAGES = [
   { label: 'English', code: 'en-IN' },
@@ -134,23 +144,19 @@ function App() {
       setIsGuestMode(true);
       setIsAuthenticated(false);
     } else if (token) {
-      verifySession(token);
+      verifyExistingSession(token);
     }
   }, []);
 
-  async function verifySession(token) {
+  async function verifyExistingSession(token) {
     try {
-      const response = await fetch(`${API_BASE}/auth/verify?session_token=${token}`);
-      if (response.ok) {
-        const data = await response.json();
-        setSessionToken(token);
-        setCurrentUser({ email: data.user_email, name: data.user_name });
-        setIsAuthenticated(true);
-        await loadUserSessions(token);
-      } else {
-        localStorage.removeItem('sessionToken');
-      }
-    } catch {
+      const data = await verifySession(token);
+      setSessionToken(token);
+      setCurrentUser({ email: data.user_email, name: data.user_name });
+      setIsAuthenticated(true);
+      await loadUserSessions(token);
+    } catch (err) {
+      console.warn('Session verification failed:', err);
       localStorage.removeItem('sessionToken');
     }
   }
@@ -159,24 +165,14 @@ function App() {
     e.preventDefault();
     setError('');
 
-    const endpoint = authMode === 'login' ? '/auth/login' : '/auth/signup';
-    const payload = authMode === 'login'
-      ? { email: authForm.email, password: authForm.password }
-      : { name: authForm.name, email: authForm.email, password: authForm.password };
-
     try {
-      const response = await fetch(`${API_BASE}${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Authentication failed');
+      let data;
+      if (authMode === 'login') {
+        data = await login(authForm.email, authForm.password);
+      } else {
+        data = await signup(authForm.name, authForm.email, authForm.password);
       }
 
-      const data = await response.json();
       setSessionToken(data.session_token);
       setCurrentUser({ email: data.user_email, name: data.user_name });
       setIsAuthenticated(true);
@@ -205,12 +201,10 @@ function App() {
 
   async function handleLogout() {
     if (sessionToken) {
-      const formData = new FormData();
-      formData.append('session_token', sessionToken);
       try {
-        await fetch(`${API_BASE}/auth/logout`, { method: 'POST', body: formData });
-      } catch {
-        // Ignore network errors during logout cleanup.
+        await logout(sessionToken);
+      } catch (err) {
+        console.warn('Logout request failed, proceeding with local cleanup:', err);
       }
     }
 

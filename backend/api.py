@@ -92,8 +92,20 @@ allowed_origins_raw = os.getenv(
 )
 ALLOWED_ORIGINS = [origin.strip() for origin in allowed_origins_raw.split(",") if origin.strip()]
 
+# Log CORS configuration for debugging
+logger.info(f"CORS allowed origins: {ALLOWED_ORIGINS}")
+logger.info(f"APP_ENV: {APP_ENV}")
+
+# In development, also allow localhost variations; in production, use strict allowlist
+if APP_ENV != "production":
+    # Add common localhost aliases for development
+    dev_origins = ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173", "http://127.0.0.1:5173"]
+    for origin in dev_origins:
+        if origin not in ALLOWED_ORIGINS:
+            ALLOWED_ORIGINS.append(origin)
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-logger = logging.getLogger("claimflow.api")
+logger.getLogger("claimflow.api")
 
 try:
     import sentry_sdk  # type: ignore
@@ -801,47 +813,79 @@ def startup_event() -> None:
 @app.post("/auth/signup", response_model=AuthResponse)
 def signup(request: SignupRequest, req: Request) -> AuthResponse:
     """Register a new user."""
-    enforce_rate_limit(req, "auth_signup", RATE_LIMIT_AUTH_PER_MIN)
-    if get_user_by_email(request.email):
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
-    user = create_user_record(
-        name=request.name,
-        email=request.email,
-        password_hash=hash_password(request.password),
-    )
-    
-    session_token = create_auth_session(user.email)
-    
-    return AuthResponse(
-        success=True,
-        message="Account created successfully",
-        user_email=user.email,
-        user_name=user.name,
-        session_token=session_token
-    )
+    try:
+        enforce_rate_limit(req, "auth_signup", RATE_LIMIT_AUTH_PER_MIN)
+        
+        logger.info(f"Signup attempt for email: {request.email}")
+        
+        # Check if email already exists
+        existing_user = get_user_by_email(request.email)
+        if existing_user:
+            logger.info(f"Signup failed: Email already registered - {request.email}")
+            raise HTTPException(status_code=400, detail="Email already registered")
+        
+        # Create user
+        user = create_user_record(
+            name=request.name,
+            email=request.email,
+            password_hash=hash_password(request.password),
+        )
+        
+        # Create session token
+        session_token = create_auth_session(user.email)
+        
+        logger.info(f"User created successfully: {user.email}")
+        
+        return AuthResponse(
+            success=True,
+            message="Account created successfully",
+            user_email=user.email,
+            user_name=user.name,
+            session_token=session_token
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Signup error: {type(e).__name__}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Signup failed: {str(e)}")
 
 
 @app.post("/auth/login", response_model=AuthResponse)
 def login(request: LoginRequest, req: Request) -> AuthResponse:
     """Login an existing user."""
-    enforce_rate_limit(req, "auth_login", RATE_LIMIT_AUTH_PER_MIN)
-    user = get_user_by_email(request.email)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    if not verify_password(request.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    
-    session_token = create_auth_session(user.email)
-    
-    return AuthResponse(
-        success=True,
-        message="Login successful",
-        user_email=user.email,
-        user_name=user.name,
-        session_token=session_token
-    )
+    try:
+        enforce_rate_limit(req, "auth_login", RATE_LIMIT_AUTH_PER_MIN)
+        
+        logger.info(f"Login attempt for email: {request.email}")
+        
+        # Look up user
+        user = get_user_by_email(request.email)
+        if not user:
+            logger.warning(f"Login failed: User not found - {request.email}")
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+        
+        # Verify password
+        if not verify_password(request.password, user.password_hash):
+            logger.warning(f"Login failed: Invalid password - {request.email}")
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+        
+        # Create session token
+        session_token = create_auth_session(user.email)
+        
+        logger.info(f"User logged in successfully: {user.email}")
+        
+        return AuthResponse(
+            success=True,
+            message="Login successful",
+            user_email=user.email,
+            user_name=user.name,
+            session_token=session_token
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Login error: {type(e).__name__}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
 
 
 @app.post("/auth/logout")
