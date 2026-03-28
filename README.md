@@ -262,6 +262,9 @@ The frontend is in [frontend](frontend) and uses Vite.
      - Example: `https://claimflow-api.onrender.com`
 4. Deploy.
 
+Current live frontend example:
+- `https://claimflow-ai-bot.vercel.app`
+
 ### 3) Connect both services
 
 After Vercel gives you your frontend URL:

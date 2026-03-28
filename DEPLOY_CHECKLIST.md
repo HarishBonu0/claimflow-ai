@@ -33,7 +33,7 @@ Use this checklist for every production rollout.
 - [ ] Framework preset: `Vite`.
 - [ ] Add frontend env var:
   - `VITE_API_BASE_URL=https://claimflow-api.onrender.com`
-- [ ] Deploy frontend and record URL (example: `https://claimflow-ai.vercel.app`).
+- [ ] Deploy frontend and record URL (example: `https://claimflow-ai-bot.vercel.app`).
 
 ## 4. CORS and cross-service linking
 
@@ -46,7 +46,7 @@ Use this checklist for every production rollout.
 Run:
 
 ```powershell
-./scripts/smoke-test-deploy.ps1 -BackendUrl "https://claimflow-api.onrender.com" -FrontendUrl "https://claimflow-ai.vercel.app"
+./scripts/smoke-test-deploy.ps1 -BackendUrl "https://claimflow-api.onrender.com" -FrontendUrl "https://claimflow-ai-bot.vercel.app"
 ```
 
 Expected:

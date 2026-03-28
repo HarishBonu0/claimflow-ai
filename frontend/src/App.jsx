@@ -20,7 +20,8 @@ const LANGUAGES = [
   { label: 'Kannada', code: 'kn-IN' },
 ];
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE =
+  import.meta.env.VITE_API_BASE_URL || 'https://claimflow-api.onrender.com';
 
 function generateLocalSessionId() {
   return `${Date.now()}-${Math.floor(Math.random() * 100000)}`;

@@ -50,7 +50,25 @@ $chatPayload = @{
     include_audio = $false
 } | ConvertTo-Json
 
-$chatResponse = Invoke-RestMethod -Method Post -Uri $chatUrl -ContentType "application/json" -Body $chatPayload -TimeoutSec $TimeoutSec
+try {
+    $chatResponse = Invoke-RestMethod -Method Post -Uri $chatUrl -ContentType "application/json" -Body $chatPayload -TimeoutSec $TimeoutSec
+}
+catch {
+    $resp = $_.Exception.Response
+    if ($null -ne $resp) {
+        $reader = New-Object System.IO.StreamReader($resp.GetResponseStream())
+        $errorBody = $reader.ReadToEnd()
+        Write-Fail "Backend chat check failed: HTTP $([int]$resp.StatusCode) from $chatUrl"
+        if ($errorBody) {
+            Write-Host "Response body: $errorBody" -ForegroundColor Yellow
+        }
+    }
+    else {
+        Write-Fail "Backend chat check failed: $($_.Exception.Message)"
+    }
+    exit 1
+}
+
 if (-not $chatResponse.response) {
     Write-Fail "Backend chat check failed: empty response from $chatUrl"
     exit 1

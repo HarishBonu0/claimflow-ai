@@ -88,7 +88,7 @@ VECTOR_BACKEND = os.getenv("VECTOR_BACKEND", "chroma_local")
 
 allowed_origins_raw = os.getenv(
     "ALLOWED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173",
+    "https://claimflow-ai-bot.vercel.app,http://localhost:5173,http://127.0.0.1:5173",
 )
 ALLOWED_ORIGINS = [origin.strip() for origin in allowed_origins_raw.split(",") if origin.strip()]
 
@@ -887,29 +887,47 @@ def sessions_list(session_token: str) -> dict[str, Any]:
 @app.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest, req: Request) -> ChatResponse:
     enforce_rate_limit(req, "chat", RATE_LIMIT_CHAT_PER_MIN)
-    user_email = resolve_session_email(request.session_token)
-    session_id, session = get_or_create_session(request.session_id, user_email=user_email)
+    try:
+        user_email = resolve_session_email(request.session_token)
+        session_id, session = get_or_create_session(request.session_id, user_email=user_email)
 
-    session.messages.append({"role": "user", "content": request.message})
-    add_message(session_id, "user", request.message)
-    response_text, lang_code = generate_chat_response(
-        request.message, 
-        session,
-        preferred_language=request.language  # Pass preferred language
-    )
-    session.messages.append({"role": "assistant", "content": response_text})
-    add_message(session_id, "assistant", response_text)
-    upsert_session_state(session_id, session)
+        session.messages.append({"role": "user", "content": request.message})
+        add_message(session_id, "user", request.message)
+        response_text, lang_code = generate_chat_response(
+            request.message,
+            session,
+            preferred_language=request.language,
+        )
+        session.messages.append({"role": "assistant", "content": response_text})
+        add_message(session_id, "assistant", response_text)
+        upsert_session_state(session_id, session)
 
-    # For typed chat, generate voice output only when explicitly requested.
-    audio_base64 = maybe_build_tts_audio(response_text, lang_code) if request.include_audio else None
+        # For typed chat, generate voice output only when explicitly requested.
+        audio_base64 = maybe_build_tts_audio(response_text, lang_code) if request.include_audio else None
 
-    return ChatResponse(
-        session_id=session_id,
-        response=response_text,
-        language=LANGUAGE_NAME_BY_CODE.get(lang_code, "English"),
-        audio_base64=audio_base64,  # Include audio for voice output
-    )
+        return ChatResponse(
+            session_id=session_id,
+            response=response_text,
+            language=LANGUAGE_NAME_BY_CODE.get(lang_code, "English"),
+            audio_base64=audio_base64,
+        )
+    except Exception as error:
+        logger.exception("chat_endpoint_error: %s", error)
+        fallback_session_id = request.session_id
+        try:
+            fallback_session_id = str(uuid.UUID(request.session_id)) if request.session_id else str(uuid.uuid4())
+        except Exception:
+            fallback_session_id = str(uuid.uuid4())
+
+        return ChatResponse(
+            session_id=fallback_session_id,
+            response=(
+                "I am having trouble completing your request right now. "
+                "Please try again in a few seconds."
+            ),
+            language=request.language if request.language in SUPPORTED_LANGUAGES else "English",
+            audio_base64=None,
+        )
 
 
 @app.post("/voice", response_model=ChatResponse)
