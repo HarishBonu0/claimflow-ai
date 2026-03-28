@@ -23,6 +23,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _is_rag_enabled() -> bool:
+    """Allow disabling heavy vector retrieval on low-memory deployments."""
+    return os.getenv("ENABLE_RAG", "true").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def answer_query(user_query, context_k=3, verbose=False, conversation_history=None):
     """
     Complete pipeline: RAG retrieval + Gemini generation with conversation context.
@@ -42,23 +47,27 @@ def answer_query(user_query, context_k=3, verbose=False, conversation_history=No
             print(f"📋 Question: {user_query}")
             logger.info(f"Processing query: {user_query[:100]}...")
         
-        # Step 1: Retrieve context using RAG (lazy import to avoid startup issues)
-        try:
-            from rag.retriever import retrieve_context
-            context = retrieve_context(user_query, k=context_k)
-            
-            if verbose:
-                if context:
-                    print(f"📚 Context found: {len(context)} characters")
-                    logger.debug(f"Retrieved context: {context[:200]}...")
-                else:
-                    print("⚠️ No context found")
-                    logger.warning("No context retrieved for query")
-        except Exception as e:
-            logger.error(f"Error retrieving context: {type(e).__name__}: {e}", exc_info=True)
-            context = ""
-            if verbose:
-                print(f"⚠️ Context retrieval failed: {e}")
+        # Step 1: Retrieve context using RAG when enabled.
+        context = ""
+        if _is_rag_enabled():
+            try:
+                from rag.retriever import retrieve_context
+                context = retrieve_context(user_query, k=context_k)
+
+                if verbose:
+                    if context:
+                        print(f"📚 Context found: {len(context)} characters")
+                        logger.debug(f"Retrieved context: {context[:200]}...")
+                    else:
+                        print("⚠️ No context found")
+                        logger.warning("No context retrieved for query")
+            except Exception as e:
+                logger.error(f"Error retrieving context: {type(e).__name__}: {e}", exc_info=True)
+                context = ""
+                if verbose:
+                    print(f"⚠️ Context retrieval failed: {e}")
+        else:
+            logger.info("RAG retrieval disabled (ENABLE_RAG=false). Using Gemini response without vector context.")
         
         # Step 2: Generate answer using Gemini with conversation history
         try:
