@@ -13,7 +13,6 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from rag.retriever import retrieve_context
 from llm.gemini_client import (
     _build_model_sequence,
     _is_model_unavailable_error,
@@ -422,7 +421,13 @@ def generate_finance_response(
 
     context = ""
     try:
+        # Lazy import keeps deployment resilient when optional RAG deps are unavailable.
+        from rag.retriever import retrieve_context
+
         context = retrieve_context(user_input, k=4, lang="all")
+    except ImportError as exc:
+        logger.warning("finance_context_retrieval_unavailable: %s", str(exc)[:300])
+        context = ""
     except Exception as exc:  # noqa: BLE001
         logger.warning("finance_context_retrieval_failed: %s", str(exc)[:300])
 
