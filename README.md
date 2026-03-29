@@ -1,376 +1,570 @@
-# Insurance Claims Process Explainer - Complete System
+# ClaimFlow AI
 
-## 📋 Project Overview
+A production-grade multilingual insurance claims assistant powered by generative AI, vector retrieval, and voice interaction.
 
-A production-ready RAG (Retrieval-Augmented Generation) system integrated with Gemini Flash that provides simple, accurate answers about insurance claims processes.
+## Overview
 
-**Status**: ✅ Production Ready
+ClaimFlow AI is a full-stack application designed to help users understand insurance policies, file claims, and access financial literacy resources in their native language. The system supports English, Hindi, Telugu, Tamil, and Kannada with seamless voice input and output capabilities.
 
----
+### Key Features
 
-## 🎯 System Architecture
+- **Multilingual Support**: English, Hindi, Telugu, Tamil, Kannada with automatic language detection
+- **Voice Interface**: Speech-to-text input and text-to-speech output via gTTS and SpeechRecognition
+- **Document Intelligence**: OCR-based extraction of claim forms, policies, and medical documents
+- **RAG Pipeline**: Optional retrieval-augmented generation for context-grounded responses
+- **Intent Routing**: Automatic classification of insurance, finance, and general queries
+- **Session Management**: Persistent chat history and user authentication with PostgreSQL
+- **Production Ready**: Comprehensive error handling, rate limiting, CORS protection, and Sentry monitoring
 
-```
-┌──────────────────────────────┐
-│      USER QUERY              │
-└──────────────────┬───────────┘
-                   ↓
-┌──────────────────────────────────────────┐
-│    RAG RETRIEVAL (retrieve_context)      │
-│  • Convert query to embedding            │
-│  • Search ChromaDB vector database       │
-│  • Return top-k relevant chunks          │
-└──────────────────┬───────────────────────┘
-                   ↓
-        CONTEXT RETRIEVAL (15 chunks)
-                   ↓
-┌──────────────────────────────────────────┐
-│  GEMINI FLASH GENERATION                 │
-│  (generate_response)                     │
-│  • Combine prompt + context + query      │
-│  • Send to Gemini Flash API              │
-│  • Generate simple answer                │
-└──────────────────┬───────────────────────┘
-                   ↓
-┌──────────────────────────────┐
-│  SIMPLE ENGLISH ANSWER       │
-│  (user-friendly)             │
-└──────────────────────────────┘
-```
-
----
-
-## 📁 Project Structure
+## Architecture
 
 ```
-claimflow-ai-rag/
-├── api.py                    # ASGI entrypoint (uvicorn api:app)
-├── main.py                   # Alternative backend entrypoint
+User Interface (React + Vite)
+         |
+         | HTTP/REST
+         v
+FastAPI Backend (api.py)
+  |
+  ├── Chat Pipeline
+  │   ├── Language Detection
+  │   ├── Intent Classification
+  │   ├── RAG Retrieval (optional)
+  │   └── Gemini Generation
+  |
+  ├── Voice Pipeline
+  │   ├── Speech-to-Text
+  │   ├── Language Detection
+  │   └── Text-to-Speech
+  |
+  ├── Document Processing
+  │   ├── PDF Text Extraction
+  │   ├── Image OCR
+  │   └── Field Extraction
+  |
+  └── Authentication & Sessions
+      ├── PostgreSQL Storage
+      ├── Session Tokens
+      └── Rate Limiting
+
+Vector Database (ChromaDB)
+- Stores embeddings of insurance/finance knowledge
+- Enables context-grounded responses via RAG
+```
+
+## Project Structure
+
+```
+claimflow-ai/
+├── docs/                          # Documentation
+│   ├── AUTH_FIX_SUMMARY.md       # Authentication implementation details
+│   ├── DEPLOYMENT_VERIFICATION.md # Deployment verification checklist
+│   └── DEPLOY_CHECKLIST.md       # Pre-deployment tasks
+│
+├── tests/                         # Test suite and demos
+│   ├── test_app.py              # Application tests
+│   ├── test_enhanced.py         # Enhanced functionality tests
+│   ├── test_integration.py      # Integration tests
+│   ├── test_models.py           # Model tests
+│   └── demo_voice.py            # Voice interaction demo
+│
 ├── backend/
-│   ├── api.py                # FastAPI routes and orchestration
+│   ├── api.py                   # FastAPI application and routes
 │   └── __init__.py
+│
 ├── frontend/
 │   ├── src/
-│   ├── public/
-│   └── package.json
-├── requirements.txt          # Dependencies
-├── README.md                 # This file
-├── GEMINI_SETUP.md          # API setup guide
-
-├── knowledge_base/
-│   ├── insurance.txt        # Insurance processes
-│   ├── finance.txt          # Financial concepts
-│   └── .gitkeep
-
-├── rag/
-│   ├── build_vector_db.py   # Build ChromaDB
-│   ├── retriever.py         # Query database
-│   └── __pycache__/
-
+│   │   ├── App.jsx              # Main React component
+│   │   ├── api.js               # API client
+│   │   ├── main.jsx             # Entry point
+│   │   └── styles.css           # Stylesheet
+│   ├── index.html
+│   ├── package.json
+│   ├── vite.config.js
+│   └── vercel.json
+│
 ├── llm/
-│   ├── gemini_client.py     # Gemini API client
-│   ├── integration_example.py # Complete example
-│   └── .gitkeep
-
+│   ├── gemini_client.py         # Gemini API integration
+│   ├── intent_classifier.py     # Query classification
+│   ├── finance_assistant.py     # Finance-specific logic
+│   ├── safety_filter.py         # Content safety checks
+│   ├── integration_example.py   # RAG + Gemini pipeline
+│   ├── savings_engine.py        # Financial calculations
+│   └── __init__.py
+│
+├── rag/
+│   ├── build_vector_db.py       # Vector database creation
+│   ├── retriever.py             # Context retrieval
+│   └── __init__.py
+│
 ├── utils/
-│   └── .gitkeep
-
-├── vector_db/               # ChromaDB storage
-│   └── [database files]
-
-└── .gitignore
+│   ├── chat_handler.py
+│   ├── document_processor.py    # PDF/image processing
+│   ├── language_detector.py     # Language detection
+│   └── __init__.py
+│
+├── voice/
+│   ├── stt.py                   # Speech-to-text
+│   ├── tts.py                   # Text-to-speech
+│   ├── voice_pipeline.py        # Voice orchestration
+│   ├── requirements.txt
+│   └── __init__.py
+│
+├── knowledge_base/
+│   ├── insurance.txt            # Insurance process knowledge
+│   ├── finance.txt              # Financial concepts
+│   └── __init__.py
+│
+├── vector_db/                   # ChromaDB embeddings storage
+│   ├── chroma.sqlite3
+│   └── ...
+│
+├── scripts/
+│   ├── smoke-test-deploy.ps1    # Deployment verification script
+│   └── ...
+│
+├── api.py                        # Production entry point
+├── main.py                       # Alternative entry point
+├── system_prompt.md             # System instructions for AI
+├── requirements.txt             # Python dependencies
+├── Dockerfile                   # Container configuration
+├── render.yaml                  # Render deployment config
+├── .env.example                 # Environment template
+├── .gitignore
+├── .dockerignore
+└── README.md
 ```
 
----
+## Prerequisites
 
-## ⚙️ Components
+- Python 3.10 or higher
+- Node.js 16+ (for frontend)
+- PostgreSQL database (Neon for cloud)
+- Gemini API key (free at https://aistudio.google.com/apikey)
+- Optional: Tesseract OCR binary for image processing
 
-### 1. RAG Retrieval (`rag/`)
-- **build_vector_db.py**: Creates embeddings from knowledge base
-- **retriever.py**: Queries vector database based on user questions
+## Installation
 
-### 2. Gemini Integration (`llm/`)
-- **gemini_client.py**: Interfaces with Gemini Flash API
-- **integration_example.py**: Complete RAG + Gemini pipeline
+### Backend Setup
 
-### 3. Knowledge Base (`knowledge_base/`)
-- **insurance.txt**: Claims processes (simple English, multilingual)
-- **finance.txt**: Financial concepts (simple English, multilingual)
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/claimflow-ai.git
+cd claimflow-ai
+```
 
----
+2. Create a Python virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
 
-## 🚀 Quick Start
-
-### 1. Install Dependencies
+3. Install Python dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Build Vector Database
+4. Create `.env` file from template:
+```bash
+cp .env.example .env
+```
+
+5. Configure environment variables in `.env`:
+```
+GEMINI_API_KEY=your_gemini_api_key
+DATABASE_URL=postgresql://user:password@host:port/dbname
+APP_ENV=development
+ENABLE_RAG=true
+```
+
+6. Initialize the database:
+```bash
+python -c "from backend.api import init_db_pool, init_db_schema; init_db_pool(); init_db_schema()"
+```
+
+7. Build the vector database (optional, for RAG):
 ```bash
 python rag/build_vector_db.py
 ```
 
-### 3. Test RAG System
+### Frontend Setup
+
 ```bash
-python rag/retriever.py
+cd frontend
+npm install
+npm run build
+# For development:
+npm run dev
 ```
 
-### 4. Set Up Gemini API
+## Running Locally
+
+### Backend Server
+
 ```bash
-setx GEMINI_API_KEY "your_api_key"  # Windows
-export GEMINI_API_KEY="your_api_key"  # Linux/Mac
+python api.py
 ```
 
-Get free API key: https://aistudio.google.com/apikey
+The FastAPI server will start at `http://localhost:8000`. Health check endpoint: `http://localhost:8000/health`
 
-### 5. Test Complete System
+### Frontend Development
+
 ```bash
-python llm/integration_example.py
+cd frontend
+npm run dev
 ```
 
----
+The frontend will be available at `http://localhost:5173`
 
-## 💻 Usage
+### Test Suite
 
-### RAG Retrieval Only
+```bash
+# Run all tests
+python -m pytest tests/
+
+# Run specific test file
+python -m pytest tests/test_integration.py -v
+
+# Interactive demo
+python tests/demo_voice.py
+```
+
+## API Endpoints
+
+### Chat
+
+`POST /chat`
+- Send text message
+- Parameters: `message`, `session_id`, `language`, `session_token`
+- Returns: Response text, session ID, language, optional audio
+
+### Voice
+
+`POST /voice` or `POST /voice-input`
+- Send audio file for processing
+- Parameters: `audio` (file), `session_id`, `preferred_language`
+- Returns: Transcribed text, generated response, audio output
+
+### Document Upload
+
+`POST /upload` or `POST /upload-document`
+- Upload claim document (PDF or image)
+- Parameters: `file` (PDF/JPG/PNG), `session_id`
+- Returns: Text extraction, field analysis, verification score
+
+### Authentication
+
+- `POST /auth/signup` - Register new user
+- `POST /auth/login` - User login
+- `POST /auth/logout` - Logout
+- `GET /auth/verify` - Verify session token
+
+### Session Management
+
+- `GET /sessions` - List user chat sessions
+- `DELETE /sessions/{session_id}` - Delete a session
+- `GET /history/{session_id}` - Retrieve chat history
+
+### Health Check
+
+`GET /health`
+- System status and environment information
+- Returns: Status, environment, vector backend, warnings
+
+## Configuration
+
+### Environment Variables
+
+Key configuration variables in `.env`:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | Required | PostgreSQL connection string |
+| `GEMINI_API_KEY` | Required | Google Gemini API key |
+| `APP_ENV` | development | Environment: development, production |
+| `ENABLE_RAG` | true | Enable/disable vector retrieval |
+| `AUTH_HASH_SCHEME` | bcrypt | Password hashing: bcrypt, argon2 |
+| `AUTH_SESSION_HOURS` | 168 | Session token validity (hours) |
+| `RATE_LIMIT_CHAT_PER_MIN` | 60 | Chat requests per minute |
+| `RATE_LIMIT_VOICE_PER_MIN` | 20 | Voice requests per minute |
+| `ALLOWED_ORIGINS` | localhost | CORS allowed origins |
+| `SENTRY_DSN` | Optional | Sentry error tracking |
+
+### Language Configuration
+
+Supported languages are defined in `backend/api.py`:
+
 ```python
-from rag.retriever import retrieve_context
-
-context = retrieve_context("What is a deductible?")
-print(context)
+SUPPORTED_LANGUAGES = {
+    "English": "en",
+    "Hindi": "hi",
+    "Telugu": "te",
+    "Tamil": "ta",
+    "Kannada": "kn",
+}
 ```
 
-### RAG + Gemini
+For adding new languages:
+1. Update `SUPPORTED_LANGUAGES` mapping
+2. Add OCR language code in `OCR_LANG_BY_CODE`
+3. Add TTS voice configurations
+4. Update system prompts for language-specific instructions
+
+## Deployment
+
+### Deploy to Render (Backend)
+
+1. Push code to GitHub
+2. In Render dashboard: New > Blueprint
+3. Select repository with `render.yaml`
+4. Configure environment variables:
+   - `DATABASE_URL`: Neon PostgreSQL URI
+   - `GEMINI_API_KEY`: Your API key
+   - `ALLOWED_ORIGINS`: Frontend URL
+5. Deploy via Render Blueprint
+
+The health endpoint will be: `https://your-service.onrender.com/health`
+
+### Deploy to Vercel (Frontend)
+
+1. Connect GitHub repository to Vercel
+2. Set root directory to `frontend/`
+3. Configure build settings:
+   - Build command: `npm run build`
+   - Output directory: `dist`
+4. Add environment variable:
+   - `VITE_API_BASE_URL`: Your Render backend URL
+5. Deploy
+
+## Security Considerations
+
+- Credentials are never logged; password hashing uses bcrypt or Argon2
+- Session tokens are validated server-side before use
+- Rate limiting protects against abuse
+- CORS policy restricts access to whitelisted origins
+- Passwords undergo sanitization to remove hidden Unicode characters
+- Minimum password length: 6 characters; maximum: 1024 characters
+- All inputs are validated using Pydantic models
+- SQL injection prevented via parameterized queries
+
+### Production Security Checklist
+
+- Enable HTTPS/SSL on all endpoints
+- Use environment variables for all secrets
+- Set `APP_ENV=production`
+- Configure Sentry for error monitoring
+- Enable database backups
+- Use strong PostgreSQL passwords
+- Rotate API keys regularly
+- Monitor rate limit thresholds
+- Enable CORS only for trusted origins
+
+## Troubleshooting
+
+### API Connection Failed
+
+```
+Could not connect to server. Please ensure backend is running and reachable.
+```
+
+Check:
+- Backend server is running on correct port
+- `VITE_API_BASE_URL` points to correct host
+- CORS origins are configured correctly
+- Firewall allows outbound connections
+
+### Database Connection Error
+
+```
+DATABASE_URL is required. Add Neon PostgreSQL URL to .env
+```
+
+Solution:
+- Create PostgreSQL database at https://neon.tech
+- Copy connection string to `.env`
+- Ensure connection string includes SSL mode: `?sslmode=require`
+
+### Gemini API Error
+
+Verify:
+- API key is valid at https://aistudio.google.com/apikey
+- `GEMINI_API_KEY` is set in environment
+- API quota is not exceeded
+- Network allows outbound Google API requests
+
+### Language Detection Issues
+
+If language is misdetected:
+- Check input contains native script characters
+- Verify system_prompt.md has correct language instructions
+- Test with pure script input (not transliterated)
+
+### OCR Not Working
+
+Ensure Tesseract OCR is installed:
+- **Ubuntu/Debian**: `sudo apt-get install tesseract-ocr tesseract-ocr-hin tesseract-ocr-tel`
+- **macOS**: `brew install tesseract`
+- **Windows**: Download installer from https://github.com/UB-Mannheim/tesseract/wiki
+
+## Performance Optimization
+
+### Vector Database
+
+For faster retrieval, build vector database at startup:
+
 ```python
-from rag.retriever import retrieve_context
-from llm.gemini_client import generate_response
-
-query = "What is a deductible?"
-context = retrieve_context(query)
-answer = generate_response(query, context)
-print(answer)
+# In backend/api.py
+from rag.build_vector_db import build_vector_db
+build_vector_db()
 ```
 
-### Complete Pipeline
+### Caching
+
+Implement response caching for common queries:
+
 ```python
-from llm.integration_example import answer_query
+from functools import lru_cache
 
-answer = answer_query("Explain the claim process", verbose=True)
-print(answer)
+@lru_cache(maxsize=256)
+def cached_response(query):
+    # expensive operation
+    pass
 ```
 
----
+### Connection Pooling
 
-## ✨ Features
+Database connections are pooled using psycopg2:
 
-✅ **Simple English** - Beginner-friendly explanations
-✅ **Multilingual** - English, Hindi, Telugu support
-✅ **Step-by-Step** - Preserves workflow structure
-✅ **Fast** - Instant retrieval and generation
-✅ **Accurate** - RAG-based answers
-✅ **Safe** - No claim approval/rejection
-✅ **Production-Ready** - Error handling included
-✅ **Scalable** - Easy to add more documents
+```python
+db_pool = pool.SimpleConnectionPool(minconn=1, maxconn=10, dsn=DATABASE_URL)
+```
 
----
+Adjust `minconn` and `maxconn` based on expected load.
 
-## Chatbot Behavior Rules
+## Monitoring
 
-The chatbot behavior is standardized across prompt logic, runtime handling, and docs.
+### Health Checks
 
-- Understand imperfect grammar and short inputs.
-- Infer user intent before asking follow-up questions.
-- Respond with user-focused, action-based steps.
-- Keep responses concise (5-7 simple sentences or short step lists).
-- Use plain language with practical guidance.
-
-Reference: [CHATBOT_RESPONSE_GUIDELINES.md](CHATBOT_RESPONSE_GUIDELINES.md)
-
----
-
-## 📊 System Stats
-
-| Metric | Value |
-|--------|-------|
-| Knowledge Chunks | 15 optimized |
-| Chunk Size | 67-182 words |
-| Retrieval Speed | <1 second |
-| Generation Speed | 2-5 seconds |
-| Embedding Model | all-MiniLM-L6-v2 |
-| LLM Model | Gemini 1.5 Flash |
-| Vector Database | ChromaDB |
-| Languages | English, Hindi, Telugu |
-
----
-
-## 🔑 Key Functions
-
-### `retrieve_context(query, k=3, min_similarity=0.25, lang='en')`
-Retrieves relevant context from vector database.
-
-**Parameters**:
-- `query` (str): User's question
-- `k` (int): Number of chunks (default: 3)
-- `min_similarity` (float): Relevance threshold (default: 0.25)
-- `lang` (str): Language preference - 'en'=English only, 'all'=all (default: 'en')
-
-**Returns**: Context string optimized for user's language
-
-### `generate_response(query, context, temperature=0.4, max_tokens=600)`
-Generates simple answer using Gemini Flash.
-
-**Parameters**:
-- `query` (str): User's question
-- `context` (str): Retrieved context
-- `temperature` (float): Model creativity 0.0-1.0 (default: 0.4)
-- `max_tokens` (int): Response length (default: 600)
-
-**Returns**: Simple English answer
-
----
-
-## 🌐 Deploy: Render (Backend) + Vercel (Frontend)
-
-### 1) Deploy backend to Render
-
-This repo already includes [render.yaml](render.yaml), so you can deploy with Render Blueprint.
-
-1. Push your code to GitHub.
-2. In Render, choose **New +** → **Blueprint**.
-3. Select the repo and confirm [render.yaml](render.yaml).
-4. Set these required environment variables in Render:
-   - `DATABASE_URL` = your Neon/PostgreSQL connection string
-   - `GEMINI_API_KEY` = your Gemini API key
-   - `ALLOWED_ORIGINS` = your Vercel URL(s), comma-separated
-     - Example: `https://your-app.vercel.app,https://your-custom-domain.com`
-5. Deploy and copy backend URL, for example:
-   - `https://claimflow-api.onrender.com`
-6. Verify health endpoint:
-   - `https://claimflow-api.onrender.com/health`
-
-### 2) Deploy frontend to Vercel
-
-The frontend is in [frontend](frontend) and uses Vite.
-
-1. In Vercel, choose **Add New Project** and import the same repo.
-2. Configure project settings:
-   - Root Directory: `frontend`
-   - Framework Preset: `Vite`
-3. Add environment variable in Vercel:
-   - `VITE_API_BASE_URL` = your Render backend URL
-     - Example: `https://claimflow-api.onrender.com`
-4. Deploy.
-
-Current live frontend example:
-- `https://claimflow-ai-bot.vercel.app`
-
-### 3) Connect both services
-
-After Vercel gives you your frontend URL:
-
-1. Go back to Render service settings.
-2. Update `ALLOWED_ORIGINS` to include your Vercel domain.
-3. Redeploy backend if needed.
-4. Test chat/document/voice flows from deployed frontend.
-
-### 4) Notes
-
-- [frontend/vercel.json](frontend/vercel.json) is included for SPA routing and Vite output config.
-- [frontend/.env.example](frontend/.env.example) shows required frontend env variables.
-- If API calls fail in browser, confirm both:
-  - `VITE_API_BASE_URL` points to Render backend
-  - Render `ALLOWED_ORIGINS` includes exact Vercel domain
-
----
-
-## 📖 Documentation
-
-- [GEMINI_SETUP.md](GEMINI_SETUP.md) - Complete API setup
-- [CHATBOT_RESPONSE_GUIDELINES.md](CHATBOT_RESPONSE_GUIDELINES.md) - Canonical response and prompt rules
-- [rag/retriever.py](rag/retriever.py) - RAG documentation
-- [llm/gemini_client.py](llm/gemini_client.py) - Gemini client docs
-- [llm/integration_example.py](llm/integration_example.py) - Examples
-
----
-
-## ⚠️ Important
-
-### Never
-- Hard-code API keys in code
-- Commit API keys to git
-- Share API keys publicly
-
-### Always
-- Use environment variables
-- Keep API keys secret
-- Follow system prompt constraints
-
----
-
-## 🧪 Testing
+Regular health monitoring endpoint:
 
 ```bash
-# Test RAG retrieval
-python rag/retriever.py
-
-# Test Gemini integration
-python llm/gemini_client.py
-
-# Test complete pipeline
-python llm/integration_example.py
+curl https://your-api.onrender.com/health
 ```
+
+Response includes:
+- System status (ok)
+- Environment (production/development)
+- Vector backend being used
+- Warnings (e.g., missing Tesseract)
+
+### Sentry Integration
+
+Enable error tracking:
+
+```python
+import sentry_sdk
+sentry_sdk.init(dsn="your_sentry_dsn")
+```
+
+Configure in `.env`:
+```
+SENTRY_DSN=https://your-sentry-key@sentry.io/project-id
+SENTRY_TRACES_SAMPLE_RATE=0.1
+```
+
+### Logging
+
+Logs are output to stdout for cloud environments:
+
+```bash
+# View logs in development
+tail -f logs.txt
+
+# In production (Render)
+# Use Render's logs dashboard
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/your-feature`
+3. Make changes and test thoroughly
+4. Commit with clear messages: `git commit -m "Add feature: description"`
+5. Push to branch: `git push origin feature/your-feature`
+6. Open a Pull Request
+
+### Code Standards
+
+- Follow PEP 8 for Python code
+- Use type hints in function signatures
+- Add docstrings to all functions
+- Write tests for new features
+- Keep components modular and testable
+
+## Documentation
+
+Additional documentation is available in the `docs/` directory:
+
+- [AUTH_FIX_SUMMARY.md](docs/AUTH_FIX_SUMMARY.md) - Authentication implementation details
+- [DEPLOYMENT_VERIFICATION.md](docs/DEPLOYMENT_VERIFICATION.md) - Production deployment checklist
+- [DEPLOY_CHECKLIST.md](docs/DEPLOY_CHECKLIST.md) - Pre-deployment verification steps
+
+## License
+
+This project is licensed under the MIT License - see LICENSE file for details.
+
+## Support
+
+For issues, questions, or suggestions:
+
+1. Check existing GitHub issues
+2. Review documentation in `docs/` directory
+3. Open a new GitHub issue with detailed description
+4. Contact the development team
+
+## Technology Stack
+
+### Backend
+- **Framework**: FastAPI 0.115+
+- **Server**: Uvicorn
+- **Database**: PostgreSQL (Neon)
+- **AI/ML**: Google Gemini API, ChromaDB
+- **Authentication**: Passlib, Bcrypt, Argon2
+- **Voice**: SpeechRecognition, gTTS, Tesseract OCR
+- **Monitoring**: Sentry SDK
+
+### Frontend
+- **Framework**: React 18.3+
+- **Build Tool**: Vite 5.4+
+- **UI Components**: Lucide React
+- **Language**: JavaScript ES6+
+
+### Deployment
+- **Backend**: Render
+- **Frontend**: Vercel
+- **Database**: Neon PostgreSQL
+- **Containers**: Docker
+- **Vector DB**: ChromaDB
+
+## Roadmap
+
+Planned features and improvements:
+
+- Multi-turn conversation context optimization
+- Fine-tuned models for domain-specific responses
+- Advanced document classification
+- Integration with insurance provider APIs
+- Advanced analytics dashboard
+- Mobile app (React Native)
+- Webhook support for CRM integration
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version history and updates.
 
 ---
 
-## 🚀 Ready for Production
-
-✅ All components tested - **SYSTEM FULLY WORKING**
-✅ Gemini model integrated - **TESTED & VERIFIED**  
-✅ 5 test questions answered successfully - **ALL PASSING**
-✅ Error handling implemented - **PRODUCTION GRADE**
-✅ Documentation complete - **COMPREHENSIVE**
-✅ Performance optimized - **FAST RESPONSES**
-✅ Security configured - **API KEY PROTECTED**
-
----
-
-## 🎉 Test Results (February 28, 2026)
-
-**All Integration Tests PASSING:**
-
-```
-📋 Question 1: What is a deductible?
-✅ Answer: A deductible is the money YOU pay when you file a claim...
-   Context: 1029 characters retrieved | Time: ~2 seconds
-
-📋 Question 2: How long does an insurance claim take?
-✅ Answer: It usually takes 1 to 5 days to check a claim...
-   Context: 736 characters retrieved | Time: ~2 seconds
-
-📋 Question 3: What should I do if my claim is rejected?
-✅ Answer: If the company says your claim is rejected...
-   Context: 1064 characters retrieved | Time: ~2 seconds
-
-📋 Question 4: Explain the claim process
-✅ Answer: Basically, if something bad happens, you need to tell the 
-   insurance company...
-   Context: 1064 characters retrieved | Time: ~2 seconds
-
-📋 Question 5: What is fraud and why is it bad?
-✅ Answer: Fraud is when you lie to get money...
-   Context: 949 characters retrieved | Time: ~2 seconds
-```
-
-**System Status:** ✅ **FULLY OPERATIONAL**
-
----
-
-**Version**: 1.0  
-**Status**: ✅ **PRODUCTION READY - ALL SYSTEMS GO**  
-**Model**: Gemini (Type: Lightweight, Fast, Reliable)  
-**Database**: ChromaDB with 15 optimized knowledge chunks  
-**Last Updated**: February 28, 2026  
-**API**: Google AI Studio (Gemini API)
+**Latest Update**: March 2026  
+**Version**: 1.0.0  
+**Status**: Production Ready
 
 
