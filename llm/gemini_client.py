@@ -13,6 +13,7 @@ import logging
 import os
 import re
 import sys
+import time
 
 from dotenv import load_dotenv
 from google import genai
@@ -62,8 +63,10 @@ except Exception as e:
 # GEMINI CONFIGURATION
 # ===============================
 
-MODEL_NAME = "gemini-2.5-flash"
-FALLBACK_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash"]
+MODEL_NAME = "gemini-2.5-flash-lite"
+FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash"]
+
+_MODEL_COOLDOWN_UNTIL: dict[str, float] = {}
 
 BLOCKED_RESPONSE = (
     "I cannot make claim-specific decisions. Please contact your insurance provider "
@@ -329,6 +332,41 @@ def _parse_model_list(raw_value: str) -> list[str]:
     return [_normalize_model_name(item) for item in raw_value.split(",") if item.strip()]
 
 
+def _extract_retry_after_seconds(error: Exception) -> float:
+    """Extract retry delay from quota error text when available."""
+    error_text = str(error)
+
+    # Pattern example: "Please retry in 59.75s"
+    match = re.search(r"retry\s+in\s+([0-9]+(?:\.[0-9]+)?)s", error_text, flags=re.IGNORECASE)
+    if match:
+        try:
+            return max(float(match.group(1)), 1.0)
+        except ValueError:
+            pass
+
+    # Pattern example in JSON details: "'retryDelay': '58s'"
+    match = re.search(r"retryDelay[^0-9]*([0-9]+)s", error_text, flags=re.IGNORECASE)
+    if match:
+        try:
+            return max(float(match.group(1)), 1.0)
+        except ValueError:
+            pass
+
+    return 60.0
+
+
+def _mark_model_cooldown(model_name: str, error: Exception) -> None:
+    retry_after = _extract_retry_after_seconds(error)
+    cooldown_until = time.time() + retry_after
+    _MODEL_COOLDOWN_UNTIL[model_name] = cooldown_until
+    logger.info(
+        "Model cooldown set model=%s retry_after=%.1fs until=%s",
+        model_name,
+        retry_after,
+        int(cooldown_until),
+    )
+
+
 def _build_model_sequence() -> list[str]:
     """Build model order from env + defaults and remove duplicates."""
     env_primary = _normalize_model_name(os.getenv("GEMINI_MODEL", ""))
@@ -343,10 +381,21 @@ def _build_model_sequence() -> list[str]:
 
     model_sequence = []
     seen = set()
+    now = time.time()
     for model in candidates:
         if model and model not in seen:
-            model_sequence.append(model)
+            cooldown_until = _MODEL_COOLDOWN_UNTIL.get(model, 0)
+            if cooldown_until > now:
+                logger.info("Skipping model in cooldown: %s", model)
+            else:
+                model_sequence.append(model)
             seen.add(model)
+
+    # If all candidates are in cooldown, fall back to full list to avoid deadlock.
+    if not model_sequence:
+        for model in candidates:
+            if model and model not in model_sequence:
+                model_sequence.append(model)
 
     return model_sequence
 
@@ -397,6 +446,7 @@ Provide a helpful, accurate answer to the user's question. Answer conversational
     model_sequence = _build_model_sequence()
     logger.info(f"Model attempt order: {model_sequence}")
     last_error = None
+    quota_error = None
 
     for idx, model_name in enumerate(model_sequence):
         try:
@@ -419,9 +469,13 @@ Provide a helpful, accurate answer to the user's question. Answer conversational
             error_msg = str(error)
             logger.error(f"Generation failed on {model_name}: {type(error).__name__}: {error_msg}")
             
-            if _is_quota_error(error) and has_next_model:
-                logger.info("Quota error detected, trying next model...")
-                continue
+            if _is_quota_error(error):
+                if quota_error is None:
+                    quota_error = error
+                _mark_model_cooldown(model_name, error)
+                if has_next_model:
+                    logger.info("Quota error detected, trying next model...")
+                    continue
 
             if _is_model_unavailable_error(error) and has_next_model:
                 logger.info("Model unavailable/inaccessible, trying next model...")
@@ -429,6 +483,10 @@ Provide a helpful, accurate answer to the user's question. Answer conversational
             
             # Return mapped error on first fatal error
             return _map_api_error(error)
+
+    if quota_error:
+        logger.error(f"Gemini generation exhausted due to quota limits: {quota_error}")
+        return _map_api_error(quota_error)
 
     if last_error:
         logger.error(f"Gemini generation failed on all models: {last_error}")
@@ -509,6 +567,7 @@ Provide a helpful, conversational answer that maintains context from the convers
     model_sequence = _build_model_sequence()
     logger.info(f"Model attempt order: {model_sequence}")
     last_error = None
+    quota_error = None
 
     for idx, model_name in enumerate(model_sequence):
         try:
@@ -531,9 +590,13 @@ Provide a helpful, conversational answer that maintains context from the convers
             error_msg = str(error)
             logger.error(f"Generation failed on {model_name}: {type(error).__name__}: {error_msg}")
             
-            if _is_quota_error(error) and has_next_model:
-                logger.info("Quota error detected, trying next model...")
-                continue
+            if _is_quota_error(error):
+                if quota_error is None:
+                    quota_error = error
+                _mark_model_cooldown(model_name, error)
+                if has_next_model:
+                    logger.info("Quota error detected, trying next model...")
+                    continue
 
             if _is_model_unavailable_error(error) and has_next_model:
                 logger.info("Model unavailable/inaccessible, trying next model...")
@@ -541,6 +604,10 @@ Provide a helpful, conversational answer that maintains context from the convers
             
             # Return mapped error on first fatal error
             return _map_api_error(error)
+
+    if quota_error:
+        logger.error(f"Gemini generation exhausted due to quota limits: {quota_error}")
+        return _map_api_error(quota_error)
 
     if last_error:
         logger.error(f"Gemini generation failed on all models: {last_error}")

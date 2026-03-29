@@ -13,6 +13,7 @@ import {
 import { 
   getHistory, 
   getSessions, 
+  deleteSession,
   sendChatMessage, 
   sendVoiceAudio, 
   uploadDocument,
@@ -77,6 +78,7 @@ function App() {
   const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0].label);
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' });
 
@@ -88,6 +90,7 @@ function App() {
   const autoStopTimerRef = useRef(null);
   const requestControllerRef = useRef(null);
   const activeAudioRef = useRef(null);
+  const recognitionRef = useRef(null);
 
   const selectedSpeechLocale = useMemo(
     () => LANGUAGES.find((lang) => lang.label === selectedLanguage)?.code || 'en-IN',
@@ -96,6 +99,45 @@ function App() {
 
   function getSpeechLocaleFromLabel(languageLabel) {
     return LANGUAGE_LABEL_TO_LOCALE[languageLabel] || selectedSpeechLocale;
+  }
+
+  function inferLanguageLabelFromTranscript(text) {
+    if (!text || !text.trim()) {
+      return null;
+    }
+
+    // Prefer script-based detection for reliable Indic language routing.
+    for (const ch of text) {
+      const code = ch.codePointAt(0);
+      if (code >= 0x0900 && code <= 0x097f) return 'Hindi';
+      if (code >= 0x0c00 && code <= 0x0c7f) return 'Telugu';
+      if (code >= 0x0b80 && code <= 0x0bff) return 'Tamil';
+      if (code >= 0x0c80 && code <= 0x0cff) return 'Kannada';
+    }
+
+    // Fallback heuristics for transliterated text from browser STT.
+    const lower = text.toLowerCase();
+    if (/\b(namaste|kaise|mujhe|kya|nahi|hain|hai|mera|meri|claim kaise)\b/.test(lower)) return 'Hindi';
+    if (/\b(namaskaram|nenu|ela|chesi|cheyyali|naaku|meeru|claim ela)\b/.test(lower)) return 'Telugu';
+    if (/\b(vanakkam|eppadi|naan|ungal|enakku|seyyalam|claim eppadi)\b/.test(lower)) return 'Tamil';
+    if (/\b(namaskara|hegide|nanu|nanage|maadodu|hege|claim hege)\b/.test(lower)) return 'Kannada';
+
+    return null;
+  }
+
+  function resolveVoiceLanguageLabel(transcript) {
+    const inferred = inferLanguageLabelFromTranscript(transcript);
+    if (inferred) {
+      return inferred;
+    }
+
+    // If user explicitly selected a non-English language, honor it for voice response.
+    if (selectedLanguage && selectedLanguage !== 'English') {
+      return selectedLanguage;
+    }
+
+    // Undefined lets backend auto-detect from content.
+    return undefined;
   }
 
   useEffect(() => {
@@ -121,6 +163,14 @@ function App() {
     }
     if (window.speechSynthesis) {
       window.speechSynthesis.cancel();
+    }
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        // no-op
+      }
+      recognitionRef.current = null;
     }
   }, []);
 
@@ -278,7 +328,53 @@ function App() {
     }
   }
 
+  function stopSpeechRecognition() {
+    if (!recognitionRef.current) {
+      return;
+    }
+    try {
+      recognitionRef.current.stop();
+    } catch {
+      // no-op: recognition can already be stopped
+    }
+    recognitionRef.current = null;
+    setIsListening(false);
+  }
+
+  function speakAssistantResponse(text, languageLabel) {
+    if (!text || !window.speechSynthesis) {
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = getSpeechLocaleFromLabel(languageLabel || selectedLanguage);
+
+    utterance.onstart = () => {
+      console.info('[TTS] Speech start', {
+        language: utterance.lang,
+        textPreview: text.slice(0, 120),
+      });
+      setIsSpeaking(true);
+    };
+
+    utterance.onend = () => {
+      console.info('[TTS] Speech end');
+      setIsSpeaking(false);
+    };
+
+    utterance.onerror = (event) => {
+      console.warn('[TTS] Speech error', event?.error || event);
+      setIsSpeaking(false);
+    };
+
+    window.speechSynthesis.speak(utterance);
+  }
+
   function stopConversation() {
+    stopSpeechRecognition();
+
     if (requestControllerRef.current) {
       requestControllerRef.current.abort();
       requestControllerRef.current = null;
@@ -293,6 +389,7 @@ function App() {
     if (window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
+    setIsSpeaking(false);
 
     setIsSending(false);
     setError('Response stopped. You can send a new question.');
@@ -311,11 +408,14 @@ function App() {
     setError('');
   }
 
-  async function submitMessage(text) {
+  async function submitMessage(text, options = {}) {
+    const { fromVoice = false } = options;
     const trimmed = text.trim();
     if (!trimmed || isSending) {
       return;
     }
+
+    const requestLanguage = fromVoice ? resolveVoiceLanguageLabel(trimmed) : selectedLanguage;
 
     setError('');
     setIsSending(true);
@@ -335,10 +435,18 @@ function App() {
       const data = await sendChatMessage({ 
         message: trimmed, 
         session_id: currentSessionId,
-        language: selectedLanguage,
+        language: requestLanguage,
         session_token: sessionToken,
-        include_audio: false,
+        include_audio: fromVoice,
       }, { signal: controller.signal });
+
+      console.info('[Chat] API response', {
+        source: fromVoice ? 'voice' : 'text',
+        requestedLanguage: requestLanguage || 'auto-detect',
+        sessionId: data.session_id,
+        language: data.language,
+        responsePreview: (data.response || '').slice(0, 160),
+      });
 
       if (data.session_id !== currentSessionId) {
         setSessionId(data.session_id);
@@ -347,6 +455,49 @@ function App() {
       const withAssistant = [...nextMessages, { role: 'assistant', content: data.response }];
       setMessages(withAssistant);
       syncChatHistory(data.session_id || currentSessionId, withAssistant);
+
+      // Only speak for mic-originated messages.
+      if (fromVoice) {
+        if (activeAudioRef.current) {
+          activeAudioRef.current.pause();
+          activeAudioRef.current.currentTime = 0;
+          activeAudioRef.current = null;
+        }
+
+        if (data.audio_base64) {
+          const audioResponseBlob = makeAudioBlob(data.audio_base64);
+          const audioUrl = URL.createObjectURL(audioResponseBlob);
+          const audio = new Audio(audioUrl);
+          activeAudioRef.current = audio;
+
+          audio.onplay = () => {
+            console.info('[TTS] Playing backend audio response', { language: data.language });
+            setIsSpeaking(true);
+          };
+          audio.onended = () => {
+            URL.revokeObjectURL(audioUrl);
+            setIsSpeaking(false);
+            activeAudioRef.current = null;
+          };
+          audio.onerror = () => {
+            URL.revokeObjectURL(audioUrl);
+            setIsSpeaking(false);
+            activeAudioRef.current = null;
+            console.warn('[TTS] Backend audio playback failed, falling back to browser TTS');
+            speakAssistantResponse(data.response, data.language);
+          };
+
+          audio.play().catch(() => {
+            URL.revokeObjectURL(audioUrl);
+            setIsSpeaking(false);
+            activeAudioRef.current = null;
+            console.warn('[TTS] Backend audio play() rejected, falling back to browser TTS');
+            speakAssistantResponse(data.response, data.language);
+          });
+        } else {
+          speakAssistantResponse(data.response, data.language);
+        }
+      }
     } catch (err) {
       if (err?.name === 'AbortError') {
         return;
@@ -366,23 +517,32 @@ function App() {
       return;
     }
 
+    // Ensure only one recognizer instance is active.
+    stopSpeechRecognition();
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    setIsSpeaking(false);
+
     setError('');
 
     const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
     recognition.lang = selectedSpeechLocale;
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
+      console.info('[STT] Recognition started', { lang: recognition.lang });
       setIsListening(true);
     };
 
     recognition.onerror = (event) => {
-      recognition.stop();
+      console.warn('[STT] Recognition error', event?.error || event);
+      stopSpeechRecognition();
       if (retryCount < 1) {
         startSpeechRecognition(retryCount + 1);
       } else {
-        setIsListening(false);
         setError(
           event?.error === 'language-not-supported'
             ? `${selectedLanguage} speech recognition is not fully supported in this browser.`
@@ -392,12 +552,16 @@ function App() {
     };
 
     recognition.onend = () => {
+      console.info('[STT] Recognition ended');
+      recognitionRef.current = null;
       setIsListening(false);
     };
 
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
-      submitMessage(transcript);
+      console.info('[STT] Recognized text', { transcript });
+      setInput(transcript);
+      submitMessage(transcript, { fromVoice: true });
     };
 
     recognition.start();
@@ -573,10 +737,10 @@ function App() {
 
   function handleMicClick() {
     if (isListening) {
-      stopAudioRecording();
+      stopSpeechRecognition();
       return;
     }
-    startAudioRecording();
+    startSpeechRecognition(0);
   }
 
   async function handleDocumentUpload(file) {
@@ -630,6 +794,42 @@ function App() {
       }
     } catch {
       // Keep local history if backend session has expired.
+    }
+  }
+
+  async function handleDeleteChat(chatId, event) {
+    event.stopPropagation();
+
+    if (!window.confirm('Delete this chat permanently? This will remove it from the database.')) {
+      return;
+    }
+
+    setError('');
+
+    // Guest mode has no server-backed history persistence in UI.
+    if (isGuestMode) {
+      setChatHistory((prev) => prev.filter((chat) => chat.id !== chatId));
+      if (sessionId === chatId) {
+        setSessionId(null);
+        setMessages([]);
+      }
+      return;
+    }
+
+    if (!sessionToken) {
+      setError('Please login again to delete chats.');
+      return;
+    }
+
+    try {
+      await deleteSession(chatId, sessionToken);
+      setChatHistory((prev) => prev.filter((chat) => chat.id !== chatId));
+      if (sessionId === chatId) {
+        setSessionId(null);
+        setMessages([]);
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to delete chat.');
     }
   }
 
@@ -771,18 +971,18 @@ function App() {
         <section className="hero">
           <div className="hero-left">
             <h1>ClaimFlow AI</h1>
-            <h2>Your AI Assistant for Insurance Claims</h2>
+            <h2>Your AI Assistant for Personal Finance and Investing</h2>
             <p className="hero-description">
-              Get instant answers about insurance claims, upload policy documents, 
-              and speak in your preferred language. Our AI-powered assistant helps 
-              you navigate the claims process with ease.
+              Get practical guidance on budgeting, investing, stock market basics, 
+              risk analysis, and financial planning. Speak in your preferred language 
+              and receive structured, actionable responses.
             </p>
             <div className="hero-actions">
               <button type="button" className="primary-btn large" onClick={goToChat}>
                 Start Chat Now
               </button>
               <button type="button" className="secondary-btn large" onClick={goToChat}>
-                Try Voice Assistant
+                Try Voice Finance Assistant
               </button>
             </div>
             <div className="hero-stats">
@@ -803,8 +1003,8 @@ function App() {
           <div className="hero-right">
             <div className="hero-visual">
               <div className="chat-preview">
-                <div className="preview-message user">What documents do I need for a claim?</div>
-                <div className="preview-message assistant">I'll help you with that! For most insurance claims, you'll need...</div>
+                <div className="preview-message user">I earn 60000 per month. Help me build a budget.</div>
+                <div className="preview-message assistant">Here is a structured monthly budget with steps and a practical example.</div>
               </div>
               <div className="hero-graph">
                 <div className="graph-title">Claim Resolution Trend</div>
@@ -826,28 +1026,28 @@ function App() {
             <div className="feature-card">
               <div className="feature-icon">🌐</div>
               <h4>Multilingual Support</h4>
-              <p>Communicate in English, Telugu, Hindi, Tamil, or Kannada with automatic language detection.</p>
+              <p>Communicate in English, Telugu, Hindi, Tamil, or Kannada with voice and text support.</p>
             </div>
             <div className="feature-card">
               <div className="feature-icon">🎤</div>
               <h4>Voice Enabled</h4>
-              <p>Ask questions using your voice and receive spoken responses in your language.</p>
+              <p>Ask finance questions by voice and get spoken responses in your selected language.</p>
             </div>
             <div className="feature-card">
               <div className="feature-icon">📄</div>
-              <h4>Document Analysis</h4>
-              <p>Upload policy documents (PDF, JPG, PNG) and get instant answers about their content.</p>
+              <h4>Structured Guidance</h4>
+              <p>Receive clean responses with Summary, Explanation, Actionable Steps, and Example.</p>
             </div>
             <div className="feature-card">
               <div className="feature-icon">💡</div>
-              <h4>Smart Guidance</h4>
-              <p>Step-by-step assistance for claim filing, verification, and settlement processes.</p>
+              <h4>Safe Financial Insights</h4>
+              <p>Risk-aware, practical advice for budgeting, investing, and long-term planning.</p>
             </div>
           </div>
         </section>
 
         <footer className="landing-footer">
-          <p>© 2026 ClaimFlow AI. Powered by Google Gemini 2.5 Flash.</p>
+          <p>© 2026 ClaimFlow AI. Powered by Google Gemini.</p>
         </footer>
 
         {renderAuthModal()}
@@ -895,14 +1095,28 @@ function App() {
                 <div className="empty-history">No chat history yet</div>
               ) : (
                 chatHistory.map((chat) => (
-                  <button
-                    type="button"
+                  <div
                     key={chat.id}
-                    className={`history-item ${chat.id === sessionId ? 'active' : ''}`}
-                    onClick={() => loadChat(chat)}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                   >
-                    {chat.title}
-                  </button>
+                    <button
+                      type="button"
+                      className={`history-item ${chat.id === sessionId ? 'active' : ''}`}
+                      onClick={() => loadChat(chat)}
+                      style={{ flex: 1 }}
+                    >
+                      {chat.title}
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={(event) => handleDeleteChat(chat.id, event)}
+                      title="Delete chat"
+                      aria-label={`Delete chat ${chat.title}`}
+                    >
+                      ×
+                    </button>
+                  </div>
                 ))
               )}
             </div>
@@ -941,7 +1155,7 @@ function App() {
 
         <main className="chat-main">
           <div className="chat-header">
-            <h2>Chat Assistant</h2>
+            <h2>Finance Assistant</h2>
             <button type="button" className="home-btn" onClick={() => setView('landing')}>
               🏠 Home
             </button>
@@ -952,16 +1166,16 @@ function App() {
               <div className="empty-chat">
                 <div className="empty-icon">💬</div>
                 <h3>Start a Conversation</h3>
-                <p>Ask about insurance claims, upload documents, or use voice queries.</p>
+                <p>Ask about budgeting, investing, stock market basics, risk analysis, or financial planning.</p>
                 <div className="suggestion-chips">
-                  <button onClick={() => submitMessage("What is insurance?")}>
-                    What is insurance?
+                  <button onClick={() => submitMessage("Help me create a monthly budget plan") }>
+                    Help me create a monthly budget plan
                   </button>
-                  <button onClick={() => submitMessage("How do I file a claim?")}>
-                    How do I file a claim?
+                  <button onClick={() => submitMessage("How should I start investing with low risk?")}>
+                    How should I start investing with low risk?
                   </button>
-                  <button onClick={() => submitMessage("What documents do I need?")}>
-                    What documents do I need?
+                  <button onClick={() => submitMessage("Explain stock market risk in simple terms") }>
+                    Explain stock market risk in simple terms
                   </button>
                 </div>
               </div>
@@ -1030,7 +1244,7 @@ function App() {
                 type="text"
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
-                placeholder="Ask about insurance claims..."
+                placeholder="Ask about budgeting, investing, risk, or financial planning..."
                 disabled={isSending}
                 className="message-input"
               />

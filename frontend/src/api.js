@@ -1,5 +1,6 @@
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'https://claimflow-api.onrender.com';
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.DEV ? 'http://localhost:8000' : 'https://claimflow-api.onrender.com');
 
 function normalizeAuthString(value) {
   if (typeof value === 'string') {
@@ -139,6 +140,27 @@ export async function getSessions(sessionToken) {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ detail: 'Failed to load sessions' }));
     throw new Error(errorData.detail || 'Failed to load sessions');
+  }
+
+  return response.json();
+}
+
+export async function deleteSession(sessionId, sessionToken) {
+  let response;
+  try {
+    response = await fetch(
+      `${API_BASE_URL}/sessions/${encodeURIComponent(sessionId)}?session_token=${encodeURIComponent(sessionToken)}`,
+      {
+        method: 'DELETE',
+      }
+    );
+  } catch (err) {
+    asUserFriendlyNetworkError(err, 'Failed to delete chat');
+  }
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'Failed to delete chat' }));
+    throw new Error(errorData.detail || 'Failed to delete chat');
   }
 
   return response.json();

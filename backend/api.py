@@ -37,8 +37,7 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 logger = logging.getLogger("claimflow.api")
 
 from llm.integration_example import answer_query
-from llm.intent_classifier import IntentClassifier
-from llm.safety_filter import check_safety
+from llm.finance_assistant import generate_finance_response
 from utils.document_processor import analyze_claim_document, get_document_summary, process_document
 from utils.language_detector import detect_language, get_language_name, get_tts_language_code
 from voice.stt import speech_to_text_with_retry
@@ -632,6 +631,26 @@ def list_user_sessions(email: str) -> list[dict[str, Any]]:
     return result
 
 
+def delete_user_session(session_id: str, email: str) -> bool:
+    """Delete a chat session for the authenticated owner.
+
+    Returns True if a session was deleted, False otherwise.
+    """
+    with get_db_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                DELETE FROM chat_sessions
+                WHERE session_id = %s
+                  AND user_email = %s
+                """,
+                (session_id, email),
+            )
+            deleted = cur.rowcount > 0
+        conn.commit()
+    return deleted
+
+
 def get_or_create_session(session_id: str | None, user_email: str | None = None) -> tuple[str, SessionState]:
     normalized_session_id: str | None = None
     if session_id:
@@ -799,24 +818,101 @@ USER QUESTION: {user_input}"""
     return enhanced_query, detected_lang
 
 
-def generate_chat_response(user_input: str, session: SessionState, preferred_language: str | None = None) -> tuple[str, str]:
-    intent, _ = IntentClassifier.classify(user_input)
-    is_safe, rejection_message = check_safety(user_input)
-    if not is_safe:
-        return rejection_message, "en"
+def _normalize_query_for_cache(user_input: str) -> str:
+    normalized = (user_input or "").strip().lower()
+    normalized = " ".join(normalized.split())
+    return normalized
 
-    enhanced_query, detected_lang = build_enhanced_prompt(user_input, session, preferred_language)
-    
-    # Pass conversation history to answer_query for context-aware responses
-    response = answer_query(
-        enhanced_query, 
-        context_k=3, 
-        verbose=False,
-        conversation_history=session.messages  # Pass full conversation history
+
+def _find_repeated_query_response(messages: list[dict[str, str]], user_input: str) -> str | None:
+    """Return cached assistant response for repeated user query in same session."""
+    target = _normalize_query_for_cache(user_input)
+    if not target:
+        return None
+
+    # Build user->assistant pairs and scan newest first.
+    pairs: list[tuple[str, str]] = []
+    for idx in range(len(messages) - 1):
+        current_msg = messages[idx]
+        next_msg = messages[idx + 1]
+        if current_msg.get("role") == "user" and next_msg.get("role") == "assistant":
+            pairs.append((current_msg.get("content", ""), next_msg.get("content", "")))
+
+    for prev_user, prev_assistant in reversed(pairs):
+        if _normalize_query_for_cache(prev_user) == target and prev_assistant:
+            return prev_assistant
+
+    return None
+
+
+def generate_chat_response(user_input: str, session: SessionState, preferred_language: str | None = None) -> tuple[str, str]:
+    # Resolve preferred language first so finance assistant can respond consistently.
+    if preferred_language:
+        normalized_code, normalized_name = _language_name_from_preference(preferred_language)
+        if normalized_code and normalized_name:
+            detected_lang = normalized_code
+            lang_name = normalized_name
+        else:
+            detected_lang = preferred_language.strip().lower()
+            lang_name = LANGUAGE_NAME_BY_CODE.get(detected_lang, "English")
+    else:
+        detected_lang, _ = detect_language(user_input)
+        detected_lang = get_tts_language_code(detected_lang)
+        lang_name = get_language_name(detected_lang)
+
+    session.last_detected_language = LANGUAGE_NAME_BY_CODE.get(detected_lang, "English")
+
+    cached_response = _find_repeated_query_response(session.messages, user_input)
+    if cached_response:
+        logger.info(
+            json.dumps(
+                {
+                    "event": "finance_cache_hit",
+                    "language": lang_name,
+                    "query_preview": user_input[:160],
+                }
+            )
+        )
+        return cached_response, detected_lang
+
+    logger.info(
+        json.dumps(
+            {
+                "event": "finance_chat_input",
+                "language": lang_name,
+                "query_preview": user_input[:200],
+            }
+        )
     )
-    
+
+    response, intent = generate_finance_response(
+        user_input=user_input,
+        conversation_history=session.messages,
+        language_name=lang_name,
+    )
+
+    logger.info(
+        json.dumps(
+            {
+                "event": "finance_chat_output",
+                "intent": intent.intent,
+                "intent_confidence": round(intent.confidence, 3),
+                "response_preview": response[:220],
+            }
+        )
+    )
+
     if not response:
-        response = "I could not generate a response. Please try again."
+        response = (
+            "Summary\nI could not generate a reliable finance response right now.\n\n"
+            "Explanation\nPlease try again in a few seconds.\n\n"
+            "Actionable Steps\n"
+            "1. Retry your question.\n"
+            "2. Add details such as amount, timeline, and risk level.\n"
+            "3. If it persists, check API quota and connectivity.\n\n"
+            "Example\n"
+            "Not needed for this query."
+        )
     return response, detected_lang
 
 
@@ -1121,6 +1217,30 @@ def sessions_list(session_token: str) -> dict[str, Any]:
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired session")
     return {"sessions": list_user_sessions(user.email)}
+
+
+@app.delete("/sessions/{session_id}")
+def delete_session(session_id: str, req: Request, session_token: str) -> dict[str, Any]:
+    enforce_rate_limit(req, "chat", RATE_LIMIT_CHAT_PER_MIN)
+
+    user = resolve_session_user(session_token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    try:
+        normalized_session_id = str(uuid.UUID(session_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid session ID") from exc
+
+    deleted = delete_user_session(normalized_session_id, user.email)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return {
+        "success": True,
+        "message": "Chat deleted successfully",
+        "session_id": normalized_session_id,
+    }
 
 
 @app.post("/chat", response_model=ChatResponse)
