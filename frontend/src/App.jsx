@@ -513,7 +513,8 @@ function App() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      setError('Speech recognition is not supported in this browser.');
+      // Fallback to backend audio upload pipeline when browser STT is unavailable.
+      startAudioRecording();
       return;
     }
 
@@ -657,7 +658,13 @@ function App() {
       if (err?.name === 'AbortError') {
         return;
       }
-      setError(err.message || 'Voice request failed. Please try again.');
+      const message = err?.message || 'Voice request failed. Please try again.';
+      if (message.toLowerCase().includes('could not clearly recognize')) {
+        setError('Voice recognition fallback is active. Please speak again.');
+        startSpeechRecognition(0);
+      } else {
+        setError(message);
+      }
     } finally {
       requestControllerRef.current = null;
       setIsSending(false);
@@ -737,9 +744,12 @@ function App() {
 
   function handleMicClick() {
     if (isListening) {
+      stopAudioRecording();
       stopSpeechRecognition();
       return;
     }
+    // Primary path: browser STT is more reliable across environments without ffmpeg/whisper setup.
+    // submitMessage(..., { fromVoice: true }) still uses backend TTS audio for multilingual speech output.
     startSpeechRecognition(0);
   }
 
@@ -971,18 +981,18 @@ function App() {
         <section className="hero">
           <div className="hero-left">
             <h1>ClaimFlow AI</h1>
-            <h2>Your AI Assistant for Personal Finance and Investing</h2>
+            <h2>Your AI Assistant for Insurance and Finance</h2>
             <p className="hero-description">
-              Get practical guidance on budgeting, investing, stock market basics, 
-              risk analysis, and financial planning. Speak in your preferred language 
-              and receive structured, actionable responses.
+              Get practical guidance on insurance claims, coverage, budgeting, investing,
+              risk analysis, and financial planning. Speak in your preferred language and
+              receive clear, actionable responses.
             </p>
             <div className="hero-actions">
               <button type="button" className="primary-btn large" onClick={goToChat}>
                 Start Chat Now
               </button>
               <button type="button" className="secondary-btn large" onClick={goToChat}>
-                Try Voice Finance Assistant
+                Try Voice Assistant
               </button>
             </div>
             <div className="hero-stats">
@@ -1003,12 +1013,12 @@ function App() {
           <div className="hero-right">
             <div className="hero-visual">
               <div className="chat-preview">
-                <div className="preview-message user">I earn 60000 per month. Help me build a budget.</div>
-                <div className="preview-message assistant">Here is a structured monthly budget with steps and a practical example.</div>
+                <div className="preview-message user">How do I file a claim and plan my monthly budget?</div>
+                <div className="preview-message assistant">I can guide you on both insurance steps and a practical finance plan.</div>
               </div>
               <div className="hero-graph">
-                <div className="graph-title">Claim Resolution Trend</div>
-                <svg viewBox="0 0 320 90" role="img" aria-label="Claim resolution trend rising over time">
+                <div className="graph-title">Financial Progress Trend</div>
+                <svg viewBox="0 0 320 90" role="img" aria-label="Financial progress trend rising over time">
                   <polyline points="10,70 70,62 120,55 170,48 220,36 270,28 310,18" />
                   <circle cx="10" cy="70" r="3" />
                   <circle cx="120" cy="55" r="3" />
@@ -1035,13 +1045,13 @@ function App() {
             </div>
             <div className="feature-card">
               <div className="feature-icon">📄</div>
-              <h4>Structured Guidance</h4>
-              <p>Receive clean responses with Summary, Explanation, Actionable Steps, and Example.</p>
+              <h4>Insurance + Finance Coverage</h4>
+              <p>Get support for claims, policy questions, budgeting, investing, and financial planning.</p>
             </div>
             <div className="feature-card">
               <div className="feature-icon">💡</div>
               <h4>Safe Financial Insights</h4>
-              <p>Risk-aware, practical advice for budgeting, investing, and long-term planning.</p>
+              <p>Risk-aware, practical guidance for money decisions with transparent limitations.</p>
             </div>
           </div>
         </section>
@@ -1166,16 +1176,16 @@ function App() {
               <div className="empty-chat">
                 <div className="empty-icon">💬</div>
                 <h3>Start a Conversation</h3>
-                <p>Ask about budgeting, investing, stock market basics, risk analysis, or financial planning.</p>
+                <p>Ask about insurance, claims, budgeting, investing, risk analysis, or financial planning.</p>
                 <div className="suggestion-chips">
-                  <button onClick={() => submitMessage("Help me create a monthly budget plan") }>
-                    Help me create a monthly budget plan
+                  <button onClick={() => submitMessage("How do I file an insurance claim?") }>
+                    How do I file an insurance claim?
                   </button>
                   <button onClick={() => submitMessage("How should I start investing with low risk?")}>
                     How should I start investing with low risk?
                   </button>
-                  <button onClick={() => submitMessage("Explain stock market risk in simple terms") }>
-                    Explain stock market risk in simple terms
+                  <button onClick={() => submitMessage("Help me with claim settlement and monthly budgeting") }>
+                    Help me with claim settlement and monthly budgeting
                   </button>
                 </div>
               </div>
@@ -1244,7 +1254,7 @@ function App() {
                 type="text"
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
-                placeholder="Ask about budgeting, investing, risk, or financial planning..."
+                placeholder="Ask about insurance claims, budgeting, investing, or financial planning..."
                 disabled={isSending}
                 className="message-input"
               />

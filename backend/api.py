@@ -38,6 +38,7 @@ logger = logging.getLogger("claimflow.api")
 
 from llm.integration_example import answer_query
 from llm.finance_assistant import generate_finance_response
+from llm.intent_classifier import IntentClassifier
 from utils.document_processor import analyze_claim_document, get_document_summary, process_document
 from utils.language_detector import detect_language, get_language_name, get_tts_language_code
 from voice.stt import speech_to_text_with_retry
@@ -221,9 +222,12 @@ class AuthResponse(BaseModel):
 
 app = FastAPI(title="ClaimFlow AI API", version="1.0.0")
 
+cors_allow_origin_regex = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$" if APP_ENV != "production" else None
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=cors_allow_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -845,6 +849,107 @@ def _find_repeated_query_response(messages: list[dict[str, str]], user_input: st
     return None
 
 
+def _classify_chat_domain(user_input: str) -> str:
+    """Classify query into insurance, finance, mixed, or unknown domains."""
+    text = (user_input or "").lower()
+
+    insurance_keywords = {
+        "insurance", "claim", "policy", "premium", "coverage", "deductible",
+        "reimbursement", "settlement", "hospital claim", "accident claim",
+        "health insurance", "car insurance", "life insurance",
+    }
+    finance_keywords = {
+        "budget", "budgeting", "investment", "invest", "stock", "mutual fund",
+        "portfolio", "risk", "retirement", "financial planning", "savings",
+        "cash flow", "asset allocation", "emergency fund", "debt",
+    }
+
+    insurance_score = sum(1 for word in insurance_keywords if word in text)
+    finance_score = sum(1 for word in finance_keywords if word in text)
+
+    if insurance_score > 0 and finance_score > 0:
+        return "mixed"
+    if insurance_score > 0:
+        return "insurance"
+    if finance_score > 0:
+        return "finance"
+
+    intent_name, _ = IntentClassifier.classify(user_input)
+    if intent_name in {"insurance_claim", "insurance_general"}:
+        return "insurance"
+    if intent_name == "financial_literacy":
+        return "finance"
+    return "unknown"
+
+
+def _infer_transliterated_voice_language(user_text: str) -> str | None:
+    """Detect likely Indic language from transliterated latin text."""
+    text = (user_text or "").lower()
+    if not text:
+        return None
+
+    patterns = {
+        "hi": ["namaste", "kaise", "mujhe", "kya", "nahi", "hai", "hain"],
+        "te": ["namaskaram", "nenu", "ela", "cheyyali", "naaku", "meeru"],
+        "ta": ["vanakkam", "eppadi", "naan", "ungal", "enakku"],
+        "kn": ["namaskara", "hegide", "nanu", "nanage", "hege"],
+    }
+
+    best_lang = None
+    best_score = 0
+    for lang_code, tokens in patterns.items():
+        score = sum(1 for token in tokens if token in text)
+        if score > best_score:
+            best_lang = lang_code
+            best_score = score
+
+    return best_lang if best_score >= 2 else None
+
+
+def _is_service_error_response(text: str) -> bool:
+    lowered = (text or "").lower()
+    return (
+        "quota exceeded" in lowered
+        or "temporarily unavailable" in lowered
+        or "no configured gemini model" in lowered
+        or "unable to connect" in lowered
+        or "failed to generate response" in lowered
+    )
+
+
+def _insurance_fallback_response(language_code: str) -> str:
+    lang = (language_code or "en").lower()
+    if lang == "hi":
+        return (
+            "बीमा सहायता के लिए अभी सीमित मोड सक्रिय है। "
+            "क्लेम के लिए पहले कंपनी को तुरंत सूचित करें, आवश्यक दस्तावेज जमा करें, "
+            "और क्लेम नंबर से स्टेटस ट्रैक करें।"
+        )
+    if lang == "te":
+        return (
+            "ప్రస్తుతం బీమా సహాయం పరిమిత మోడ్‌లో ఉంది. "
+            "క్లెయిమ్ కోసం ముందుగా కంపెనీకి వెంటనే సమాచారం ఇవ్వండి, అవసరమైన పత్రాలు సమర్పించండి, "
+            "క్లెయిమ్ నంబర్‌తో స్టేటస్ ట్రాక్ చేయండి."
+        )
+    if lang == "ta":
+        return (
+            "தற்போது காப்பீட்டு உதவி வரையறுக்கப்பட்ட முறையில் உள்ளது. "
+            "கிளெயிம் செய்ய முதலில் நிறுவனத்துக்கு உடனே தகவல் அளிக்கவும், தேவையான ஆவணங்களை சமர்ப்பிக்கவும், "
+            "கிளெயிம் எண்ணால் நிலையை கண்காணிக்கவும்."
+        )
+    if lang == "kn":
+        return (
+            "ಈಗ ವಿಮೆ ಸಹಾಯ ಸೀಮಿತ ಮೋಡ್‌ನಲ್ಲಿ ಇದೆ. "
+            "ಕ್ಲೇಮ್‌ಗೆ ಮೊದಲು ಕಂಪನಿಗೆ ತಕ್ಷಣ ಮಾಹಿತಿ ನೀಡಿ, ಅಗತ್ಯ ದಾಖಲೆಗಳನ್ನು ಸಲ್ಲಿಸಿ, "
+            "ಕ್ಲೇಮ್ ಸಂಖ್ಯೆಯಿಂದ ಸ್ಥಿತಿಯನ್ನು ಟ್ರ್ಯಾಕ್ ಮಾಡಿ."
+        )
+    return (
+        "Insurance assistance is currently in limited mode. "
+        "For a claim, first notify your insurer quickly, submit required documents, "
+        "and track status using your claim number."
+    )
+
+
 def generate_chat_response(user_input: str, session: SessionState, preferred_language: str | None = None) -> tuple[str, str]:
     # Resolve preferred language first so finance assistant can respond consistently.
     if preferred_language:
@@ -875,32 +980,59 @@ def generate_chat_response(user_input: str, session: SessionState, preferred_lan
         )
         return cached_response, detected_lang
 
+    domain = _classify_chat_domain(user_input)
+
     logger.info(
         json.dumps(
             {
-                "event": "finance_chat_input",
+                "event": "chat_input",
+                "domain": domain,
                 "language": lang_name,
                 "query_preview": user_input[:200],
             }
         )
     )
 
-    response, intent = generate_finance_response(
-        user_input=user_input,
-        conversation_history=session.messages,
-        language_name=lang_name,
-    )
-
-    logger.info(
-        json.dumps(
-            {
-                "event": "finance_chat_output",
-                "intent": intent.intent,
-                "intent_confidence": round(intent.confidence, 3),
-                "response_preview": response[:220],
-            }
+    if domain in {"insurance", "mixed"}:
+        enhanced_query, _ = build_enhanced_prompt(user_input, session, preferred_language)
+        response = answer_query(
+            enhanced_query,
+            context_k=3,
+            verbose=False,
+            conversation_history=session.messages,
         )
-    )
+        if _is_service_error_response(response):
+            response = _insurance_fallback_response(detected_lang)
+        if not response:
+            response = "I could not generate an insurance response. Please try again."
+        logger.info(
+            json.dumps(
+                {
+                    "event": "chat_output",
+                    "domain": domain,
+                    "mode": "insurance_pipeline",
+                    "response_preview": response[:220],
+                }
+            )
+        )
+    else:
+        response, intent = generate_finance_response(
+            user_input=user_input,
+            conversation_history=session.messages,
+            language_name=lang_name,
+        )
+        logger.info(
+            json.dumps(
+                {
+                    "event": "chat_output",
+                    "domain": domain,
+                    "mode": "finance_pipeline",
+                    "intent": intent.intent,
+                    "intent_confidence": round(intent.confidence, 3),
+                    "response_preview": response[:220],
+                }
+            )
+        )
 
     if not response:
         response = (
@@ -1334,7 +1466,18 @@ def voice_chat(
                 ),
             )
 
-        translated_transcript = translate_transcript_for_language(user_text, preferred_language)
+        detected_voice_lang, _ = detect_language(user_text)
+        detected_voice_lang = get_tts_language_code(detected_voice_lang)
+
+        # If user selected English but spoke another supported language, prefer spoken language.
+        effective_preferred_language = preferred_language
+        if parse_preferred_language(preferred_language) in {None, "en"}:
+            inferred_translit_lang = _infer_transliterated_voice_language(user_text)
+            effective_lang_code = inferred_translit_lang or detected_voice_lang
+            if effective_lang_code in {"hi", "te", "ta", "kn"}:
+                effective_preferred_language = LANGUAGE_NAME_BY_CODE.get(effective_lang_code, preferred_language)
+
+        translated_transcript = translate_transcript_for_language(user_text, effective_preferred_language)
 
         session.messages.append({"role": "user", "content": user_text})
         add_message(session_id, "user", user_text)
@@ -1342,7 +1485,7 @@ def voice_chat(
         response_text, lang_code = generate_chat_response(
             user_text, 
             session,
-            preferred_language=preferred_language
+            preferred_language=effective_preferred_language
         )
         session.messages.append({"role": "assistant", "content": response_text})
         add_message(session_id, "assistant", response_text)

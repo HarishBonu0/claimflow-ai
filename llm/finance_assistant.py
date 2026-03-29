@@ -26,6 +26,14 @@ logger = logging.getLogger("claimflow.finance")
 
 SECTION_ORDER = ["Summary", "Explanation", "Actionable Steps", "Example"]
 
+LANGUAGE_FALLBACK_CODE = {
+    "english": "en",
+    "hindi": "hi",
+    "telugu": "te",
+    "tamil": "ta",
+    "kannada": "kn",
+}
+
 
 @dataclass
 class IntentResult:
@@ -78,6 +86,12 @@ class FinanceIntentAnalyzer:
         "options trading", "futures", "intraday", "margin", "crypto signal",
     }
 
+    ADVICE_HINTS = {
+        "should i", "what should i do", "recommend", "which one", "which should i",
+        "is it good", "where should i invest", "how much should i invest",
+        "buy or sell", "can i invest", "best option",
+    }
+
     @classmethod
     def analyze(cls, user_input: str) -> IntentResult:
         text = (user_input or "").strip().lower()
@@ -85,7 +99,25 @@ class FinanceIntentAnalyzer:
         clean = re.sub(r"\s+", " ", clean).strip()
         words = set(clean.split())
 
+        has_non_latin = any(ord(ch) > 127 for ch in text)
+
         if not clean:
+            # Avoid forcing clarification when keyword rules cannot parse the message
+            # (for example native scripts or encoding-mangled input from clients).
+            if text:
+                intent_name = "personal_finance"
+                if has_non_latin and ("భీమ" in text or "इंश्य" in text or "காப்பீ" in text or "ವಿಮೆ" in text):
+                    intent_name = "financial_planning"
+
+                return IntentResult(
+                    intent=intent_name,
+                    confidence=0.35,
+                    needs_clarification=False,
+                    clarification_question="",
+                    risk_sensitive=False,
+                    in_domain=True,
+                )
+
             return IntentResult(
                 intent="clarification",
                 confidence=0.0,
@@ -128,14 +160,17 @@ class FinanceIntentAnalyzer:
         needs_clarification = False
         clarification_question = ""
         short_query = len(clean.split()) <= 3
-        if not in_domain:
+
+        is_advice_query = any(hint in clean for hint in cls.ADVICE_HINTS) or risk_sensitive
+
+        if not in_domain and is_advice_query:
             needs_clarification = True
             clarification_question = (
                 "I can help with finance topics only. "
                 "Do you want help with budgeting, investing, stock market, risk analysis, "
                 "or financial planning?"
             )
-        elif short_query or confidence < 0.2:
+        elif is_advice_query and short_query and confidence < 0.15 and domain_overlap == 0:
             needs_clarification = True
             clarification_question = (
                 "Could you clarify your goal and time horizon? "
@@ -382,6 +417,84 @@ def enforce_risk_disclaimer(response_text: str) -> str:
         return response_text
 
 
+def _is_service_error_text(text: str) -> bool:
+    lowered = (text or "").lower()
+    return (
+        "quota exceeded" in lowered
+        or "temporarily unavailable" in lowered
+        or "no configured gemini model" in lowered
+        or "unable to connect" in lowered
+    )
+
+
+def _finance_fallback_response(intent: IntentResult, language_name: str) -> str:
+    code = LANGUAGE_FALLBACK_CODE.get((language_name or "").strip().lower(), "en")
+
+    responses = {
+        "en": {
+            "general": (
+                "I can still help while AI service is busy. "
+                "Share your income, expenses, goal, and timeline, and I will provide a practical finance plan."
+            ),
+            "budgeting": (
+                "For budgeting, start with this rule: essentials 50%, goals 30%, savings 20%. "
+                "Track all spending weekly and adjust categories that exceed limits."
+            ),
+            "investing": (
+                "For investing, begin with diversification and small monthly contributions. "
+                "Choose instruments based on risk tolerance, timeline, and emergency fund readiness."
+            ),
+            "stock_market": (
+                "For stock market decisions, avoid guaranteed-return thinking. "
+                "Use diversified exposure, defined risk limits, and long-term horizon before increasing allocation."
+            ),
+            "risk_analysis": (
+                "For risk analysis, first define maximum acceptable loss and investment horizon. "
+                "Then spread allocation across asset classes to reduce concentration risk."
+            ),
+            "financial_planning": (
+                "For financial planning, define goals by time horizon: short, medium, and long term. "
+                "Map monthly savings to each goal and review progress monthly."
+            ),
+        },
+        "hi": {
+            "general": "AI सेवा अभी व्यस्त है। आप आय, खर्च, लक्ष्य और समय अवधि बताइए, मैं व्यावहारिक वित्त योजना दूंगा।",
+            "budgeting": "बजट के लिए 50-30-20 नियम से शुरू करें। खर्च साप्ताहिक ट्रैक करें और लिमिट से ऊपर जाने वाली श्रेणियां तुरंत कम करें।",
+            "investing": "निवेश में विविधीकरण और छोटे मासिक निवेश से शुरू करें। जोखिम क्षमता और समय अवधि के आधार पर विकल्प चुनें।",
+            "stock_market": "शेयर बाजार में गारंटीड रिटर्न सोच से बचें। लंबी अवधि और स्पष्ट जोखिम सीमा के साथ निवेश करें।",
+            "risk_analysis": "रिस्क विश्लेषण में पहले अधिकतम नुकसान सीमा तय करें। फिर अलग-अलग एसेट क्लास में निवेश बांटें।",
+            "financial_planning": "वित्तीय योजना के लिए लक्ष्यों को समय अवधि के अनुसार बांटें और हर महीने प्रगति की समीक्षा करें।",
+        },
+        "te": {
+            "general": "AI సేవ ప్రస్తుతం బిజీగా ఉంది. మీ ఆదాయం, ఖర్చులు, లక్ష్యం, కాలవ్యవధి చెప్తే నేను ప్రాక్టికల్ ఫైనాన్స్ ప్లాన్ ఇస్తాను.",
+            "budgeting": "బడ్జెట్ కోసం 50-30-20 విధానంతో ప్రారంభించండి. ప్రతి వారం ఖర్చులను ట్రాక్ చేసి, ఎక్కువైన ఖర్చులను తగ్గించండి.",
+            "investing": "ఇన్వెస్టింగ్‌ను చిన్న నెలసరి మొత్తాలతో, డైవర్సిఫికేషన్‌తో ప్రారంభించండి. రిస్క్ సామర్థ్యం మరియు టైమ్ హరైజన్ ఆధారంగా ఎంపిక చేయండి.",
+            "stock_market": "స్టాక్ మార్కెట్‌లో గ్యారంటీ రిటర్న్స్ అనుకోవద్దు. దీర్ఘకాల దృష్టి మరియు స్పష్టమైన రిస్క్ లిమిట్స్‌తో ముందుకు వెళ్లండి.",
+            "risk_analysis": "రిస్క్ విశ్లేషణలో ముందుగా అంగీకరించే గరిష్ట నష్టాన్ని నిర్ణయించండి. తర్వాత పెట్టుబడిని విభిన్న ఆస్తుల్లో విభజించండి.",
+            "financial_planning": "ఫైనాన్షియల్ ప్లానింగ్ కోసం లక్ష్యాలను కాలవ్యవధి ప్రకారం విభజించి, ప్రతి నెల ప్రోగ్రెస్‌ను సమీక్షించండి.",
+        },
+        "ta": {
+            "general": "AI சேவை இப்போது பிஸியாக உள்ளது. உங்கள் வருமானம், செலவு, இலக்கு, காலவரை சொன்னால் நான் நடைமுறை நிதி திட்டம் தருகிறேன்.",
+            "budgeting": "பட்ஜெட்டுக்கு 50-30-20 முறையில் தொடங்குங்கள். வாரந்தோறும் செலவை கண்காணித்து, அதிகமாகும் பிரிவுகளை குறையுங்கள்.",
+            "investing": "மாதாந்திர சிறு முதலீடு மற்றும் பரவலாக்கத்துடன் தொடங்குங்கள். உங்கள் அபாய சகிப்பு மற்றும் காலவரைக்கு ஏற்ற கருவிகளைத் தேர்வுசெய்யுங்கள்.",
+            "stock_market": "பங்குச் சந்தையில் உறுதியான வருமானம் என்ற எண்ணத்தை தவிர்க்கவும். நீண்டகால நோக்கு மற்றும் தெளிவான அபாய வரம்புடன் செல்லுங்கள்.",
+            "risk_analysis": "அபாய மதிப்பீட்டில் முதலில் ஏற்கக்கூடிய அதிகபட்ச இழப்பை நிர்ணயிக்கவும். பின்னர் முதலீட்டை பல சொத்து வகைகளில் பகிரவும்.",
+            "financial_planning": "நிதித் திட்டத்தில் இலக்குகளை காலவரையின்படி பிரித்து, மாதந்தோறும் முன்னேற்றத்தை மதிப்பாய்வு செய்யுங்கள்.",
+        },
+        "kn": {
+            "general": "AI ಸೇವೆ ಈಗ ಬ್ಯುಸಿ ಇದೆ. ನಿಮ್ಮ ಆದಾಯ, ಖರ್ಚು, ಗುರಿ ಮತ್ತು ಅವಧಿ ಹೇಳಿದರೆ ನಾನು ಪ್ರಾಯೋಗಿಕ ಹಣಕಾಸು ಯೋಜನೆ ನೀಡುತ್ತೇನೆ.",
+            "budgeting": "ಬಜೆಟ್‌ಗೆ 50-30-20 ವಿಧಾನದಿಂದ ಪ್ರಾರಂಭಿಸಿ. ವಾರವಾರ ಖರ್ಚು ಟ್ರ್ಯಾಕ್ ಮಾಡಿ, ಮಿತಿಯನ್ನು ಮೀರಿದ ಖರ್ಚುಗಳನ್ನು ಕಡಿತಗೊಳಿಸಿ.",
+            "investing": "ಸಣ್ಣ ಮಾಸಿಕ ಹೂಡಿಕೆ ಮತ್ತು ವಿಭಜನೆಯಿಂದ ಆರಂಭಿಸಿ. ನಿಮ್ಮ ಅಪಾಯ ಸಾಮರ್ಥ್ಯ ಮತ್ತು ಅವಧಿಗೆ ತಕ್ಕ ಆಯ್ಕೆಯನ್ನು ಮಾಡಿ.",
+            "stock_market": "ಶೇರು ಮಾರುಕಟ್ಟೆಯಲ್ಲಿ ಖಚಿತ ಲಾಭದ ನಿರೀಕ್ಷೆ ಬೇಡ. ದೀರ್ಘಾವಧಿ ದೃಷ್ಟಿ ಮತ್ತು ಸ್ಪಷ್ಟ ಅಪಾಯ ಮಿತಿಗಳೊಂದಿಗೆ ಹೂಡಿಕೆ ಮಾಡಿ.",
+            "risk_analysis": "ಅಪಾಯ ವಿಶ್ಲೇಷಣೆಯಲ್ಲಿ ಮೊದಲು ಗರಿಷ್ಠ ಒಪ್ಪಬಹುದಾದ ನಷ್ಟವನ್ನು ನಿಗದಿಪಡಿ. ನಂತರ ಹೂಡಿಕೆಯನ್ನು ವಿವಿಧ ಆಸ್ತಿ ವರ್ಗಗಳಿಗೆ ಹಂಚಿ.",
+            "financial_planning": "ಹಣಕಾಸು ಯೋಜನೆಗಾಗಿ ಗುರಿಗಳನ್ನು ಅವಧಿ ಆಧಾರದ ಮೇಲೆ ವಿಭಾಗಿಸಿ, ಪ್ರತಿಮಾಸ ಪ್ರಗತಿಯನ್ನು ಪರಿಶೀಲಿಸಿ.",
+        },
+    }
+
+    lang_pack = responses.get(code, responses["en"])
+    return lang_pack.get(intent.intent, lang_pack["general"])
+
+
 def generate_finance_response(
     user_input: str,
     conversation_history: list[dict[str, str]],
@@ -440,6 +553,21 @@ def generate_finance_response(
     )
 
     raw_response = FinanceResponseGenerator.generate(prompt)
+
+    if _is_service_error_text(raw_response):
+        fallback = _finance_fallback_response(intent, language_name)
+        logger.info(
+            json.dumps(
+                {
+                    "event": "finance_service_fallback_used",
+                    "intent": intent.intent,
+                    "language": language_name,
+                    "response_preview": fallback[:180],
+                }
+            )
+        )
+        return fallback, intent
+
     final_response = enforce_plain_structured_response(raw_response)
     if intent.risk_sensitive:
         final_response = enforce_risk_disclaimer(final_response)
