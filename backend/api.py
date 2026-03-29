@@ -7,6 +7,7 @@ while keeping existing LLM/RAG business logic intact.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 import os
@@ -16,6 +17,7 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -58,9 +60,6 @@ OCR_LANG_BY_CODE = {
     "ta": "tam",
     "kn": "kan",
 }
-
-MAX_BCRYPT_PASSWORD_BYTES = 72
-
 
 def _load_system_prompt() -> str:
     try:
@@ -108,6 +107,52 @@ if APP_ENV != "production":
             ALLOWED_ORIGINS.append(origin)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+argon2_context = CryptContext(schemes=["argon2"], deprecated="auto")
+AUTH_HASH_SCHEME = os.getenv("AUTH_HASH_SCHEME", "bcrypt").strip().lower()
+AUTH_DEBUG_PASSWORD_LOG = os.getenv("AUTH_DEBUG_PASSWORD_LOG", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _log_auth_backend_versions() -> None:
+    try:
+        passlib_version = version("passlib")
+    except PackageNotFoundError:
+        passlib_version = "not-installed"
+
+    try:
+        bcrypt_version = version("bcrypt")
+    except PackageNotFoundError:
+        bcrypt_version = "not-installed"
+
+    try:
+        argon2_version = version("argon2-cffi")
+    except PackageNotFoundError:
+        argon2_version = "not-installed"
+
+    logger.info(
+        json.dumps(
+            {
+                "event": "auth_backend_versions",
+                "passlib": passlib_version,
+                "bcrypt": bcrypt_version,
+                "argon2_cffi": argon2_version,
+                "auth_hash_scheme": AUTH_HASH_SCHEME,
+            }
+        )
+    )
+
+
+def _password_debug_payload(password_text: str) -> dict[str, Any]:
+    password_bytes = password_text.encode("utf-8")
+    payload: dict[str, Any] = {
+        "password_type": type(password_text).__name__,
+        "password_char_length": len(password_text),
+        "password_byte_length": len(password_bytes),
+        "password_sha256_12": hashlib.sha256(password_bytes).hexdigest()[:12],
+    }
+    if AUTH_DEBUG_PASSWORD_LOG:
+        payload["password_value"] = password_text
+        payload["password_repr"] = repr(password_text)
+    return payload
 
 try:
     import sentry_sdk  # type: ignore
@@ -827,10 +872,31 @@ def health() -> dict[str, Any]:
 
 
 def hash_password(password: str) -> str:
-    """Hash password using bcrypt."""
-    if not isinstance(password, str):
-        raise ValueError("Password must be a string")
-    return pwd_context.hash(password)
+    """Hash password with selected scheme and reliable fallback."""
+    password_text = password if isinstance(password, str) else str(password)
+    password_bytes = password_text.encode("utf-8")
+
+    logger.info(
+        json.dumps(
+            {
+                "event": "hash_password_input",
+                **_password_debug_payload(password_text),
+            }
+        )
+    )
+
+    if AUTH_HASH_SCHEME == "argon2":
+        return argon2_context.hash(password_text)
+
+    # Avoid bcrypt's 72-byte hard limit by using argon2 for long UTF-8 byte payloads.
+    if len(password_bytes) > 72:
+        return argon2_context.hash(password_text)
+
+    try:
+        return pwd_context.hash(password_text)
+    except Exception as exc:
+        logger.warning(f"bcrypt hash failed, falling back to argon2: {type(exc).__name__}: {exc}")
+        return argon2_context.hash(password_text)
 
 
 def sanitize_password_input(password: str) -> str:
@@ -860,26 +926,45 @@ def sanitize_password_input(password: str) -> str:
 
 
 def validate_signup_password(password: str) -> None:
-    """Validate password constraints before bcrypt hashing."""
+    """Validate password constraints before hashing."""
     if not isinstance(password, str):
         raise HTTPException(status_code=400, detail="Password must be sent as a plain string")
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if len(password) > 1024:
+        raise HTTPException(status_code=400, detail="Password too long")
+    password_byte_length = len(password.encode("utf-8"))
+    if password_byte_length > 4096:
+        raise HTTPException(status_code=400, detail="Password byte length too large")
 
-    byte_len = len(password.encode("utf-8"))
-    if byte_len > MAX_BCRYPT_PASSWORD_BYTES:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Password is too long for secure hashing. "
-                "Use at most 72 bytes (about 72 English characters)."
-            ),
+    logger.info(
+        json.dumps(
+            {
+                "event": "signup_password_validated",
+                **_password_debug_payload(password),
+            }
         )
+    )
 
 
 def verify_password(password: str, password_hash: str) -> bool:
     """Verify password against hash."""
+    password_text = password if isinstance(password, str) else str(password)
     try:
-        return pwd_context.verify(password, password_hash)
-    except Exception:
+        if isinstance(password_hash, str) and password_hash.startswith("$argon2"):
+            return argon2_context.verify(password_text, password_hash)
+        if AUTH_HASH_SCHEME == "argon2":
+            return argon2_context.verify(password_text, password_hash)
+        return pwd_context.verify(password_text, password_hash)
+    except Exception as exc:
+        logger.warning(f"Password verification failed: {type(exc).__name__}: {exc}")
+        try:
+            if isinstance(password_hash, str) and password_hash.startswith("$2"):
+                return pwd_context.verify(password_text, password_hash)
+            if isinstance(password_hash, str) and password_hash.startswith("$argon2"):
+                return argon2_context.verify(password_text, password_hash)
+        except Exception:
+            pass
         return False
 
 
@@ -896,6 +981,7 @@ def init_demo_user():
 
 @app.on_event("startup")
 def startup_event() -> None:
+    _log_auth_backend_versions()
     init_db_pool()
     init_db_schema()
     init_demo_user()
@@ -921,11 +1007,7 @@ def signup(request: SignupRequest, req: Request) -> AuthResponse:
                 {
                     "event": "signup_password_received",
                     "email": request.email,
-                    "password_type": type(password).__name__,
-                    "password_value": password,
-                    "password_repr": repr(password),
-                    "password_char_length": len(password),
-                    "password_byte_length": len(password.encode("utf-8")),
+                    **_password_debug_payload(password),
                 }
             )
         )
@@ -936,7 +1018,7 @@ def signup(request: SignupRequest, req: Request) -> AuthResponse:
             password_hash = hash_password(password)
         except ValueError as exc:
             logger.warning(f"Signup failed: Invalid password input for {request.email}: {exc}")
-            raise HTTPException(status_code=400, detail="Password must be at most 72 bytes") from exc
+            raise HTTPException(status_code=400, detail="Invalid password format") from exc
 
         user = create_user_record(
             name=request.name,

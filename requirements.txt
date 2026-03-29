@@ -1,6 +1,3 @@
-# ClaimFlow AI - Requirements
-streamlit==1.54.0
-
 # Core Framework
 fastapi>=0.115.0
 pydantic[email]>=2.0.0
@@ -15,19 +12,18 @@ pandas>=2.1.0
 # AI & LLM Integration
 google-genai>=1.0.0
 python-dotenv>=1.0.0
-passlib[bcrypt]>=1.7.4
+passlib[argon2,bcrypt]==1.7.4
+bcrypt==4.0.1
+argon2-cffi==23.1.0
 sentry-sdk>=2.0.0
 
-# RAG & Vector Database
-sentence-transformers>=2.0.0
-chromadb>=0.4.0
+# Database
 psycopg[binary]>=3.2.0
 psycopg2-binary>=2.9.9
 
-# Voice Features (Optional)
+# Voice Features
 SpeechRecognition>=3.10.0
 gTTS>=2.5.0
-openai-whisper>=20231117
 # pydub
 
 # Document Processing
@@ -37,6 +33,11 @@ Pillow>=10.0.0
 
 # Language Detection
 langdetect>=1.0.9
+
+# Optional heavy dependencies for local/full-feature builds (not required for Render free plan)
+# sentence-transformers>=2.0.0
+# chromadb>=0.4.0
+# openai-whisper>=20231117
 
 # Development
 # pytest

@@ -37,8 +37,6 @@ const LANGUAGE_LABEL_TO_LOCALE = Object.fromEntries(
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL || 'https://claimflow-api.onrender.com';
 
-const MAX_BCRYPT_PASSWORD_BYTES = 72;
-
 function generateLocalSessionId() {
   return `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 }
@@ -60,10 +58,6 @@ function base64ToBlob(base64, mimeType) {
     bytes[i] = binary.charCodeAt(i);
   }
   return new Blob([bytes], { type: mimeType });
-}
-
-function getUtf8ByteLength(value) {
-  return new TextEncoder().encode(value || '').length;
 }
 
 function App() {
@@ -178,14 +172,6 @@ function App() {
   async function handleAuth(e) {
     e.preventDefault();
     setError('');
-
-    if (authMode === 'signup') {
-      const byteLength = getUtf8ByteLength(authForm.password);
-      if (byteLength > MAX_BCRYPT_PASSWORD_BYTES) {
-        setError('Password is too long. Use at most 72 bytes (about 72 English characters).');
-        return;
-      }
-    }
 
     try {
       let data;

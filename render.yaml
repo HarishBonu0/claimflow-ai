@@ -12,6 +12,10 @@ services:
         value: chroma_local
       - key: ENABLE_RAG
         value: "false"
+      - key: AUTH_HASH_SCHEME
+        value: bcrypt
+      - key: AUTH_DEBUG_PASSWORD_LOG
+        value: "false"
       - key: AUTH_SESSION_HOURS
         value: "168"
       - key: RATE_LIMIT_AUTH_PER_MIN
