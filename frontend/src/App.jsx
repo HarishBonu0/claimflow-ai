@@ -61,6 +61,20 @@ function base64ToBlob(base64, mimeType) {
   return new Blob([bytes], { type: mimeType });
 }
 
+function buildChatTitleFromMessages(messages) {
+  const firstUserMessage = messages.find((msg) => msg.role === 'user')?.content?.trim();
+  if (!firstUserMessage) {
+    return 'New Chat';
+  }
+
+  const normalized = firstUserMessage.replace(/\s+/g, ' ');
+  const keywords = normalized.split(' ').slice(0, 6).join(' ');
+  if (keywords.length <= 38) {
+    return keywords;
+  }
+  return `${keywords.slice(0, 38)}...`;
+}
+
 function App() {
   const [view, setView] = useState('landing');
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -79,6 +93,7 @@ function App() {
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
 
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' });
 
@@ -295,12 +310,8 @@ function App() {
   }
 
   function syncChatHistory(currentSessionId, nextMessages) {
-    // Don't save chat history in guest mode
-    if (isGuestMode) return;
-
     setChatHistory((prev) => {
-      const titleSource = nextMessages.find((msg) => msg.role === 'user')?.content || 'New Chat';
-      const title = titleSource.length > 40 ? `${titleSource.slice(0, 40)}...` : titleSource;
+      const title = buildChatTitleFromMessages(nextMessages);
 
       let found = false;
       const updated = prev.map((chat) => {
@@ -396,6 +407,7 @@ function App() {
   }
 
   function startNewChat() {
+    setIsMobileHistoryOpen(false);
     if (isGuestMode) {
       const newId = generateLocalSessionId();
       setSessionId(newId);
@@ -792,6 +804,7 @@ function App() {
   }
 
   async function loadChat(chat) {
+    setIsMobileHistoryOpen(false);
     setSessionId(chat.id);
     setMessages(chat.messages || []);
     setView('chat');
@@ -1098,37 +1111,53 @@ function App() {
             </select>
           </div>
 
-          <div className="sidebar-section">
-            <div className="sidebar-label">💬 Chat History</div>
-            <div className="history-list">
-              {chatHistory.length === 0 ? (
-                <div className="empty-history">No chat history yet</div>
-              ) : (
-                chatHistory.map((chat) => (
-                  <div
-                    key={chat.id}
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                  >
-                    <button
-                      type="button"
-                      className={`history-item ${chat.id === sessionId ? 'active' : ''}`}
-                      onClick={() => loadChat(chat)}
-                      style={{ flex: 1 }}
+          <div className="sidebar-section chat-history-section">
+            <button
+              type="button"
+              className="mobile-history-toggle"
+              onClick={() => setIsMobileHistoryOpen((prev) => !prev)}
+              aria-expanded={isMobileHistoryOpen}
+              aria-controls="mobile-history-panel"
+            >
+              <span>💬 Chat History</span>
+              <span aria-hidden="true">{isMobileHistoryOpen ? '▲' : '▼'}</span>
+            </button>
+
+            <div
+              id="mobile-history-panel"
+              className={`history-list-wrapper ${isMobileHistoryOpen ? 'open' : ''}`}
+            >
+              <div className="sidebar-label desktop-history-label">💬 Chat History</div>
+              <div className="history-list">
+                {chatHistory.length === 0 ? (
+                  <div className="empty-history">No chat history yet</div>
+                ) : (
+                  chatHistory.map((chat) => (
+                    <div
+                      key={chat.id}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                     >
-                      {chat.title}
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      onClick={(event) => handleDeleteChat(chat.id, event)}
-                      title="Delete chat"
-                      aria-label={`Delete chat ${chat.title}`}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))
-              )}
+                      <button
+                        type="button"
+                        className={`history-item ${chat.id === sessionId ? 'active' : ''}`}
+                        onClick={() => loadChat(chat)}
+                        style={{ flex: 1 }}
+                      >
+                        {chat.title}
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        onClick={(event) => handleDeleteChat(chat.id, event)}
+                        title="Delete chat"
+                        aria-label={`Delete chat ${chat.title}`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
 

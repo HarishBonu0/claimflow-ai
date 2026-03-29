@@ -625,6 +625,35 @@ button:disabled {
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+.chat-history-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-history-toggle {
+  display: none;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-soft);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.mobile-history-toggle:hover {
+  background: rgba(30, 215, 96, 0.08);
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+
+.history-list-wrapper {
+  margin-top: 0;
+}
+
 .sidebar-label {
   font-size: 11px;
   color: var(--text-muted);
@@ -1175,9 +1204,32 @@ button:disabled {
 
   .chat-sidebar {
     width: 100%;
-    max-height: 45vh;
+    max-height: none;
     border-right: none;
     border-bottom: 1px solid var(--border-soft);
+  }
+
+  .mobile-history-toggle {
+    display: flex;
+  }
+
+  .desktop-history-label {
+    display: none;
+  }
+
+  .history-list-wrapper {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.24s ease;
+  }
+
+  .history-list-wrapper.open {
+    max-height: 52vh;
+    margin-top: 10px;
+  }
+
+  .history-list {
+    max-height: 42vh;
   }
 
   .chat-main {
