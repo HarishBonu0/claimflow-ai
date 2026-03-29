@@ -30,6 +30,10 @@ const LANGUAGES = [
   { label: 'Kannada', code: 'kn-IN' },
 ];
 
+const LANGUAGE_LABEL_TO_LOCALE = Object.fromEntries(
+  LANGUAGES.map((lang) => [lang.label, lang.code])
+);
+
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL || 'https://claimflow-api.onrender.com';
 
@@ -95,6 +99,10 @@ function App() {
     () => LANGUAGES.find((lang) => lang.label === selectedLanguage)?.code || 'en-IN',
     [selectedLanguage]
   );
+
+  function getSpeechLocaleFromLabel(languageLabel) {
+    return LANGUAGE_LABEL_TO_LOCALE[languageLabel] || selectedSpeechLocale;
+  }
 
   useEffect(() => {
     if (messageListRef.current) {
@@ -349,9 +357,6 @@ function App() {
       if (data.session_id !== currentSessionId) {
         setSessionId(data.session_id);
       }
-      if (data.language) {
-        setSelectedLanguage(data.language);
-      }
 
       const withAssistant = [...nextMessages, { role: 'assistant', content: data.response }];
       setMessages(withAssistant);
@@ -473,11 +478,8 @@ function App() {
       if (data.session_id !== currentSessionId) {
         setSessionId(data.session_id);
       }
-      if (data.language) {
-        setSelectedLanguage(data.language);
-      }
 
-      const userTranscript = data.transcript?.trim() || 'Voice message received';
+      const userTranscript = data.transcript_translated?.trim() || data.transcript?.trim() || 'Voice message received';
       setMessages((prevMessages) => {
         const nextMessages = [
           ...prevMessages,
@@ -497,7 +499,7 @@ function App() {
         audio.play().catch(() => URL.revokeObjectURL(audioUrl));
       } else if (window.speechSynthesis) {
         const utterance = new SpeechSynthesisUtterance(data.response);
-        utterance.lang = selectedSpeechLocale;
+        utterance.lang = getSpeechLocaleFromLabel(data.language);
         window.speechSynthesis.cancel();
         window.speechSynthesis.speak(utterance);
       }

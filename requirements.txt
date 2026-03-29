@@ -27,6 +27,7 @@ psycopg2-binary>=2.9.9
 # Voice Features (Optional)
 SpeechRecognition>=3.10.0
 gTTS>=2.5.0
+openai-whisper>=20231117
 # pydub
 
 # Document Processing

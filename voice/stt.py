@@ -5,8 +5,11 @@ Converts audio input to text for RAG processing with multilingual support.
 
 import os
 import logging
+import subprocess
+import tempfile
 
 logger = logging.getLogger(__name__)
+_WHISPER_MODEL = None
 
 # Language code mapping for Whisper (ISO 639-1 codes)
 LANGUAGE_MAP = {
@@ -36,10 +39,14 @@ def _speech_to_text_whisper(audio_path, language='en', auto_detect=True):
     """Primary STT engine: OpenAI Whisper."""
     import whisper
 
-    language_code = _resolve_language_code(language)
-    logger.info(f"Loading Whisper model for language: {language_code}")
+    global _WHISPER_MODEL
 
-    model = whisper.load_model("base")
+    language_code = _resolve_language_code(language)
+    if _WHISPER_MODEL is None:
+        logger.info("Loading Whisper model (base)")
+        _WHISPER_MODEL = whisper.load_model("base")
+
+    model = _WHISPER_MODEL
     transcribe_lang = None if auto_detect else language_code
 
     logger.info(f"Transcribing audio from: {audio_path}")
@@ -70,9 +77,24 @@ def _speech_to_text_google(audio_path, language='en'):
 
     language_code = _resolve_language_code(language)
     recognizer = sr.Recognizer()
+    temp_wav_path = None
 
     try:
-        with sr.AudioFile(audio_path) as source:
+        source_path = audio_path
+        ext = os.path.splitext(audio_path)[1].lower()
+        if ext not in {".wav", ".aiff", ".aif", ".flac"}:
+            temp_wav = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+            temp_wav_path = temp_wav.name
+            temp_wav.close()
+            cmd = ["ffmpeg", "-y", "-i", audio_path, temp_wav_path]
+            logger.info("Converting audio for Google STT via ffmpeg: %s", " ".join(cmd))
+            conversion = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            if conversion.returncode != 0:
+                logger.error("ffmpeg conversion failed: %s", conversion.stderr[:300])
+                return "Error: Could not process audio format. Please try recording again."
+            source_path = temp_wav_path
+
+        with sr.AudioFile(source_path) as source:
             audio_data = recognizer.record(source)
         text = recognizer.recognize_google(audio_data, language=language_code)
         text = (text or "").strip()
@@ -84,6 +106,12 @@ def _speech_to_text_google(audio_path, language='en'):
         return "Error: Could not understand the audio. Please speak more clearly."
     except Exception as exc:
         return f"Error: Could not process audio. {str(exc)[:100]}"
+    finally:
+        if temp_wav_path and os.path.exists(temp_wav_path):
+            try:
+                os.remove(temp_wav_path)
+            except OSError:
+                pass
 
 
 def speech_to_text(audio_path, language='en', auto_detect=True):
@@ -135,8 +163,13 @@ def speech_to_text_with_retry(audio_path, language='en', max_retries=1):
     """
     for attempt in range(max_retries + 1):
         logger.info(f"Speech recognition attempt {attempt + 1}/{max_retries + 1}")
-        
-        result = speech_to_text(audio_path, language=language, auto_detect=(attempt == 0))
+
+        # Prefer user's selected language first for multilingual accuracy, then fall back to auto-detect.
+        language_code = _resolve_language_code(language)
+        prefer_explicit_language = language_code not in {"", "en"}
+        auto_detect = not prefer_explicit_language if attempt == 0 else prefer_explicit_language
+
+        result = speech_to_text(audio_path, language=language, auto_detect=auto_detect)
         
         # If successful, return result
         if not result.startswith("Error:"):

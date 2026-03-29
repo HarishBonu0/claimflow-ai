@@ -138,6 +138,7 @@ class ChatResponse(BaseModel):
     language: str
     audio_base64: str | None = None
     transcript: str | None = None
+    transcript_translated: str | None = None
 
 
 class SessionState(BaseModel):
@@ -644,17 +645,61 @@ def retrieve_document_chunks(query: str, document_chunks: list[str], k: int = 3)
     return [chunk for _, chunk in scored[:k]]
 
 
+def _language_name_from_preference(preferred_language: str | None) -> tuple[str | None, str | None]:
+    """Return normalized language code and display name from label/code/locale."""
+    lang_code = parse_preferred_language(preferred_language)
+    if not lang_code:
+        return None, None
+    return lang_code, LANGUAGE_NAME_BY_CODE.get(lang_code, "English")
+
+
+def translate_transcript_for_language(transcript: str, preferred_language: str | None) -> str:
+    """Best-effort translation of voice transcript into user's selected language."""
+    if not transcript or not transcript.strip():
+        return transcript
+
+    target_code, target_name = _language_name_from_preference(preferred_language)
+    if not target_code or not target_name:
+        return transcript
+
+    detected_code, _ = detect_language(transcript)
+    detected_code = get_tts_language_code(detected_code)
+    if detected_code == target_code:
+        return transcript
+
+    translation_prompt = (
+        f"Translate the following user message to {target_name}. "
+        "Return only the translated text with no explanation.\n\n"
+        f"Message: {transcript}\n"
+        "Translation:"
+    )
+    translated = answer_query(translation_prompt, context_k=0, verbose=False)
+    translated = (translated or "").strip()
+
+    # Fall back to original transcript when translation fails or returns generic service text.
+    if not translated:
+        return transcript
+    lowered = translated.lower()
+    if (
+        "i'm here to help with insurance questions" in lowered
+        or "failed to generate response" in lowered
+        or "temporarily unavailable" in lowered
+    ):
+        return transcript
+
+    return translated
+
+
 def build_enhanced_prompt(user_input: str, session: SessionState, preferred_language: str | None = None) -> tuple[str, str]:
     # Use preferred language if provided, otherwise detect from input
     if preferred_language:
-        # Normalize the language label to code
-        lang_code = SUPPORTED_LANGUAGES.get(preferred_language, None)
-        if lang_code:
-            detected_lang = lang_code
-            lang_name = preferred_language
+        normalized_code, normalized_name = _language_name_from_preference(preferred_language)
+        if normalized_code and normalized_name:
+            detected_lang = normalized_code
+            lang_name = normalized_name
         else:
-            # Try to detect if it's already a code
-            detected_lang = preferred_language.lower()
+            # Last fallback if caller passed an unknown custom value.
+            detected_lang = preferred_language.strip().lower()
             lang_name = LANGUAGE_NAME_BY_CODE.get(detected_lang, preferred_language)
     else:
         # Fall back to detection from message content
@@ -1065,6 +1110,17 @@ def voice_chat(
             parse_preferred_language(preferred_language)
             or SUPPORTED_LANGUAGES.get(session.last_detected_language, "en")
         )
+        preferred_name = LANGUAGE_NAME_BY_CODE.get(preferred_lang, "English")
+        logger.info(
+            "voice_request_received session_id=%s preferred_language_raw=%s preferred_lang_code=%s preferred_lang_name=%s audio_filename=%s content_type=%s",
+            session_id,
+            preferred_language,
+            preferred_lang,
+            preferred_name,
+            audio.filename,
+            audio.content_type,
+        )
+
         user_text = speech_to_text_with_retry(temp_audio_path, language=preferred_lang, max_retries=2)
         if user_text.startswith("Error:"):
             preferred_name = LANGUAGE_NAME_BY_CODE.get(preferred_lang, "your selected language")
@@ -1075,6 +1131,8 @@ def voice_chat(
                     "Please speak a little slower and try again."
                 ),
             )
+
+        translated_transcript = translate_transcript_for_language(user_text, preferred_language)
 
         session.messages.append({"role": "user", "content": user_text})
         add_message(session_id, "user", user_text)
@@ -1095,6 +1153,7 @@ def voice_chat(
             language=LANGUAGE_NAME_BY_CODE.get(lang_code, "English"),
             audio_base64=audio_b64,
             transcript=user_text,
+            transcript_translated=translated_transcript,
         )
     finally:
         try:
