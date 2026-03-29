@@ -1,6 +1,35 @@
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'https://claimflow-api.onrender.com';
 
+function normalizeAuthString(value) {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (value === null || value === undefined) {
+    return '';
+  }
+  return String(value);
+}
+
+function sanitizePasswordInput(value) {
+  let password = normalizeAuthString(value);
+
+  // Recover from accidental JSON.stringify(password) from callers.
+  if (password.startsWith('"') && password.endsWith('"')) {
+    try {
+      const parsed = JSON.parse(password);
+      if (typeof parsed === 'string') {
+        password = parsed;
+      }
+    } catch {
+      // Keep original value if it is not valid JSON.
+    }
+  }
+
+  // Remove hidden Unicode chars that can inflate byte length unexpectedly.
+  return password.replace(/[\u200B-\u200D\u2060\uFEFF]/g, '');
+}
+
 function asUserFriendlyNetworkError(err, fallbackMessage) {
   const message = (err && err.message ? err.message : '').toLowerCase();
   if (message.includes('failed to fetch') || message.includes('networkerror')) {
@@ -120,12 +149,27 @@ export async function getSessions(sessionToken) {
 // =========================
 
 export async function signup(name, email, password) {
+  const payload = {
+    name: normalizeAuthString(name).trim(),
+    email: normalizeAuthString(email).trim(),
+    password: sanitizePasswordInput(password),
+  };
+
+  console.info('[signup] request payload diagnostics', {
+    nameType: typeof payload.name,
+    emailType: typeof payload.email,
+    passwordType: typeof payload.password,
+    passwordLength: payload.password.length,
+    passwordBytes: new TextEncoder().encode(payload.password).length,
+    passwordValue: payload.password,
+  });
+
   let response;
   try {
     response = await fetch(`${API_BASE_URL}/auth/signup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, password }),
+      body: JSON.stringify(payload),
     });
   } catch (err) {
     asUserFriendlyNetworkError(err, 'Signup failed - network error');

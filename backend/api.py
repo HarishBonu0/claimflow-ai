@@ -21,7 +21,7 @@ from typing import Any
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, StrictStr
 from psycopg2 import pool
 from psycopg2.extras import Json, RealDictCursor
 from dotenv import load_dotenv
@@ -158,7 +158,7 @@ class User(BaseModel):
 class SignupRequest(BaseModel):
     name: str = Field(min_length=2)
     email: EmailStr
-    password: str = Field(min_length=6)
+    password: StrictStr = Field(min_length=6)
 
 
 class LoginRequest(BaseModel):
@@ -783,11 +783,42 @@ def health() -> dict[str, Any]:
 
 def hash_password(password: str) -> str:
     """Hash password using bcrypt."""
+    if not isinstance(password, str):
+        raise ValueError("Password must be a string")
     return pwd_context.hash(password)
+
+
+def sanitize_password_input(password: str) -> str:
+    """Normalize accidental formatting/hidden chars from client payload."""
+    if not isinstance(password, str):
+        raise HTTPException(status_code=400, detail="Password must be sent as a plain string")
+
+    normalized = password
+
+    # Recover from accidental JSON.stringify(password) value like "\"secret\"".
+    if normalized.startswith('"') and normalized.endswith('"'):
+        try:
+            parsed = json.loads(normalized)
+            if isinstance(parsed, str):
+                normalized = parsed
+        except json.JSONDecodeError:
+            pass
+
+    # Strip hidden Unicode chars that may alter effective byte length.
+    hidden_chars = {ord("\u200b"): None, ord("\u200c"): None, ord("\u200d"): None, ord("\u2060"): None, ord("\ufeff"): None}
+    normalized = normalized.translate(hidden_chars)
+
+    if "\x00" in normalized:
+        raise HTTPException(status_code=400, detail="Password contains invalid control characters")
+
+    return normalized
 
 
 def validate_signup_password(password: str) -> None:
     """Validate password constraints before bcrypt hashing."""
+    if not isinstance(password, str):
+        raise HTTPException(status_code=400, detail="Password must be sent as a plain string")
+
     byte_len = len(password.encode("utf-8"))
     if byte_len > MAX_BCRYPT_PASSWORD_BYTES:
         raise HTTPException(
@@ -839,13 +870,33 @@ def signup(request: SignupRequest, req: Request) -> AuthResponse:
             logger.info(f"Signup failed: Email already registered - {request.email}")
             raise HTTPException(status_code=400, detail="Email already registered")
 
-        validate_signup_password(request.password)
+        password = sanitize_password_input(request.password)
+        logger.info(
+            json.dumps(
+                {
+                    "event": "signup_password_received",
+                    "email": request.email,
+                    "password_type": type(password).__name__,
+                    "password_value": password,
+                    "password_repr": repr(password),
+                    "password_char_length": len(password),
+                    "password_byte_length": len(password.encode("utf-8")),
+                }
+            )
+        )
+        validate_signup_password(password)
         
         # Create user
+        try:
+            password_hash = hash_password(password)
+        except ValueError as exc:
+            logger.warning(f"Signup failed: Invalid password input for {request.email}: {exc}")
+            raise HTTPException(status_code=400, detail="Password must be at most 72 bytes") from exc
+
         user = create_user_record(
             name=request.name,
             email=request.email,
-            password_hash=hash_password(request.password),
+            password_hash=password_hash,
         )
         
         # Create session token
