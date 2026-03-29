@@ -32,6 +32,7 @@ logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
 logging.getLogger("chromadb").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
+logger = logging.getLogger("claimflow.api")
 
 from llm.integration_example import answer_query
 from llm.intent_classifier import IntentClassifier
@@ -105,7 +106,6 @@ if APP_ENV != "production":
             ALLOWED_ORIGINS.append(origin)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-logger.getLogger("claimflow.api")
 
 try:
     import sentry_sdk  # type: ignore
