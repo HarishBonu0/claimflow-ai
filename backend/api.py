@@ -59,6 +59,8 @@ OCR_LANG_BY_CODE = {
     "kn": "kan",
 }
 
+MAX_BCRYPT_PASSWORD_BYTES = 72
+
 
 def _load_system_prompt() -> str:
     try:
@@ -784,6 +786,19 @@ def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
 
+def validate_signup_password(password: str) -> None:
+    """Validate password constraints before bcrypt hashing."""
+    byte_len = len(password.encode("utf-8"))
+    if byte_len > MAX_BCRYPT_PASSWORD_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Password is too long for secure hashing. "
+                "Use at most 72 bytes (about 72 English characters)."
+            ),
+        )
+
+
 def verify_password(password: str, password_hash: str) -> bool:
     """Verify password against hash."""
     try:
@@ -823,6 +838,8 @@ def signup(request: SignupRequest, req: Request) -> AuthResponse:
         if existing_user:
             logger.info(f"Signup failed: Email already registered - {request.email}")
             raise HTTPException(status_code=400, detail="Email already registered")
+
+        validate_signup_password(request.password)
         
         # Create user
         user = create_user_record(
@@ -847,7 +864,7 @@ def signup(request: SignupRequest, req: Request) -> AuthResponse:
         raise
     except Exception as e:
         logger.error(f"Signup error: {type(e).__name__}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Signup failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Signup failed due to a server error. Please try again.")
 
 
 @app.post("/auth/login", response_model=AuthResponse)
@@ -885,7 +902,7 @@ def login(request: LoginRequest, req: Request) -> AuthResponse:
         raise
     except Exception as e:
         logger.error(f"Login error: {type(e).__name__}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Login failed due to a server error. Please try again.")
 
 
 @app.post("/auth/logout")
